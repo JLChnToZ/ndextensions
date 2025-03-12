@@ -19,18 +19,16 @@ namespace JLChnToZ.NDExtensions.Editors {
             var transform = ctx.AvatarRootObject.transform;
             transform.GetPositionAndRotation(out var orgPos, out var orgRot);
             transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity); // Make sure the avatar is at origin
-            var animator = declaration.GetComponent<Animator>();
+            var animator = declaration.Animator;
             var avatar = animator.avatar;
             if (avatar == null) return;
             #if VRC_SDK_VRCSDK3
-            var eyePosition = declaration.adjustViewpoint ? MeasureEyePosition(animator) : Vector3.zero;
+            var eyePosition = declaration.adjustViewpoint ? MeasureEyePosition(declaration) : Vector3.zero;
             #endif
-            var hips = declaration.@override && declaration.overrideBones != null && declaration.overrideBones.Length > 0 ?
-                declaration.overrideBones[(int)HumanBodyBones.Hips] :
-                animator.GetBoneTransform(HumanBodyBones.Hips);
+            var hips = declaration.GetBoneTransform(HumanBodyBones.Hips);
             if (hips != null) {
                 if (declaration.autoCalculateFootOffset) {
-                    var offset = SoleResolver.FindOffset(animator);
+                    var offset = SoleResolver.FindOffset(declaration, ctx.AvatarRootObject);
                     if (offset < 0) hips.position += new Vector3(0, -offset, 0);
                 }
                 hips.position += declaration.manualOffset;
@@ -45,20 +43,20 @@ namespace JLChnToZ.NDExtensions.Editors {
             #if VRC_SDK_VRCSDK3
             if (declaration.adjustViewpoint &&
                 declaration.TryGetComponent(out VRC.SDK3.Avatars.Components.VRCAvatarDescriptor vrcaDesc))
-                vrcaDesc.ViewPosition += MeasureEyePosition(animator) - eyePosition;
+                vrcaDesc.ViewPosition += MeasureEyePosition(declaration) - eyePosition;
             #endif
             DestroyImmediate(declaration);
             transform.SetPositionAndRotation(orgPos, orgRot);
         }
 
-        static Vector3 MeasureEyePosition(Animator animator) {
-            var leftEye = animator.GetBoneTransform(HumanBodyBones.LeftEye);
-            var rightEye = animator.GetBoneTransform(HumanBodyBones.RightEye);
+        static Vector3 MeasureEyePosition(RebakeHumanoid declaration) {
+            var leftEye = declaration.GetBoneTransform(HumanBodyBones.LeftEye);
+            var rightEye = declaration.GetBoneTransform(HumanBodyBones.RightEye);
             if (leftEye != null) {
                 if (rightEye != null) return (leftEye.position + rightEye.position) * 0.5f;
                 return leftEye.position;
             } else if (rightEye != null) return rightEye.position;
-            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            var head = declaration.GetBoneTransform(HumanBodyBones.Head);
             if (head != null) return head.position;
             return Vector3.zero;
         }

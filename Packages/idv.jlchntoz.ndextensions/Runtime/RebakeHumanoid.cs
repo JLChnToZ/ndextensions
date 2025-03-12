@@ -4,7 +4,7 @@ namespace JLChnToZ.NDExtensions {
     [AddComponentMenu("JLChnToZ/Non-Destructive Extensions/Rebake Humanoid Avatar")]
     [RequireComponent(typeof(Animator))]
     [DisallowMultipleComponent]
-    public sealed partial class RebakeHumanoid : MonoBehaviour {
+    public sealed partial class RebakeHumanoid : MonoBehaviour, IBoneTransformProvider {
         [Tooltip("Manually adjust the avatar's offset.")]
         public Vector3 manualOffset;
         [Tooltip("Automatically calculates the avatar's foot offset by detecting the sole of the model (slow).")]
@@ -16,6 +16,18 @@ namespace JLChnToZ.NDExtensions {
         [Tooltip("Use other transforms as bones instead of the original bones defined in the avatar.")]
         public bool @override;
         public Transform[] overrideBones;
+        Animator animator;
+
+        public Animator Animator {
+            get {
+                if (animator == null) TryGetComponent(out animator);
+                return animator;
+            }
+        }
+
+        public Transform GetBoneTransform(HumanBodyBones bone) =>
+            @override && overrideBones != null && overrideBones.Length > 0 ? overrideBones[(int)bone] :
+            Animator.GetBoneTransform(bone);
     }
 
     #if VRC_SDK_VRCSDK3

@@ -1,0 +1,17 @@
+{
+  "name": "idv.jlchntoz.ndextensions",
+  "displayName": "Vistanz's Non Destructive Extensions",
+  "version": "0.0.1",
+  "unity": "2022.1",
+  "description": "Non Destructive Extensions For VRChat Avatars (built on top of NDMF)",
+  "license": "MIT",
+  "vrchatVersion": "2022.1.1",
+  "vpmDependencies": {
+    "nadena.dev.ndmf": "1.x.x"
+  },
+  "author": {
+    "name": "Jeremy Lam aka. Vistanz",
+    "email": "me@moka-rin.moe",
+    "url": "https://xtl.booth.pm"
+  }
+}

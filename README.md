@@ -1,5 +1,7 @@
 # Vistanz's Non Dsetructive Extensions
 
+[日本語版](README.JA.md)
+
 This is a set of non-destructive tools built on top of [NDMF](https://ndmf.nadena.dev/), aims to provide features that doesn't exists in packages provided by others.
 
 ## Currently Available Tools

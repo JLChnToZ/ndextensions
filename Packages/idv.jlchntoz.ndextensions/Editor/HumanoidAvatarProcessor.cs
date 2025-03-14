@@ -77,16 +77,10 @@ namespace JLChnToZ.NDExtensions.Editors {
             this.assetRoot = assetRoot;
             this.animator = animator;
             avatar = animator.avatar;
-            if (avatar == null || !avatar.isValid || !avatar.isHuman)
-                throw new ArgumentException("The avatar is not a vaild humanoid.", nameof(animator));
             root = animator.transform;
             if (bones == null || bones.Length != (int)HumanBodyBones.LastBone) {
-                bones = new Transform[(int)HumanBodyBones.LastBone];
-                for (HumanBodyBones i = 0; i < HumanBodyBones.LastBone; i++) {
-                    var transform = animator.GetBoneTransform(i);
-                    if (transform == null) continue;
-                    bones[(int)i] = transform;
-                }
+                bones = MecanimUtils.GuessHumanoidBodyBones(root);
+                if (bones == null) throw new InvalidOperationException("Can not find humanoid bone mapping.");
             }
             for (HumanBodyBones i = 0; i < HumanBodyBones.LastBone; i++){
                 var bone = bones[(int)i];
@@ -158,7 +152,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 var clonedMesh = Instantiate(orgMesh);
                 clonedMesh.name = orgMesh.name;
                 clonedMesh.bindposes = bindposes;
-                AssetDatabase.AddObjectToAsset(clonedMesh, assetRoot);
+                if (assetRoot != null) AssetDatabase.AddObjectToAsset(clonedMesh, assetRoot);
                 skinnedMeshRenderer.sharedMesh = clonedMesh;
             }
         }
@@ -265,19 +259,34 @@ namespace JLChnToZ.NDExtensions.Editors {
                     limit = new HumanLimit { useDefaultValues = true },
                 };
             }
-            var desc = avatar.humanDescription;
-            desc = new HumanDescription {
-                armStretch = desc.armStretch,
-                upperArmTwist = desc.upperArmTwist,
-                lowerArmTwist = desc.lowerArmTwist,
-                legStretch = desc.legStretch,
-                lowerLegTwist = desc.lowerLegTwist,
-                upperLegTwist = desc.upperLegTwist,
-                feetSpacing = desc.feetSpacing,
-                hasTranslationDoF = desc.hasTranslationDoF,
-                human = humanBones,
-                skeleton = skeletonBones,
-            };
+            HumanDescription desc;
+            if (avatar != null) {
+                desc = avatar.humanDescription;
+                desc = new HumanDescription {
+                    armStretch = desc.armStretch,
+                    upperArmTwist = desc.upperArmTwist,
+                    lowerArmTwist = desc.lowerArmTwist,
+                    legStretch = desc.legStretch,
+                    lowerLegTwist = desc.lowerLegTwist,
+                    upperLegTwist = desc.upperLegTwist,
+                    feetSpacing = desc.feetSpacing,
+                    hasTranslationDoF = desc.hasTranslationDoF,
+                    human = humanBones,
+                    skeleton = skeletonBones,
+                };
+            } else
+                desc = new HumanDescription {
+                    armStretch = 0.05F,
+                    upperArmTwist = 0.5F,
+                    lowerArmTwist = 0.5F,
+                    legStretch = 0.05F,
+                    lowerLegTwist = 0.5F,
+                    upperLegTwist = 0.5F,
+                    feetSpacing = 0.0F,
+                    hasTranslationDoF = false,
+                    human = humanBones,
+                    skeleton = skeletonBones,
+                };
             animator.avatar = null;
             RestoreCachedPositions();
             avatar = AvatarBuilder.BuildHumanAvatar(root.gameObject, desc);
@@ -288,7 +297,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         void ApplyAvatar() {
             foreach (var child in skeletonBoneTransforms) CachePosition(child, true);
             animator.avatar = avatar;
-            AssetDatabase.AddObjectToAsset(avatar, assetRoot);
+            if (assetRoot != null) AssetDatabase.AddObjectToAsset(avatar, assetRoot);
             RestoreCachedPositions();
         }
         #endregion

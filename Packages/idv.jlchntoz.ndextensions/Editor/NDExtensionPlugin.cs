@@ -12,9 +12,25 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public override string DisplayName => "Vistanz's Non Destructive Plugin";
 
-        protected override void Configure() => InPhase(BuildPhase.Transforming).AfterPlugin("nadena.dev.modular-avatar").Run("Rebake Humanoid", Run);
+        protected override void Configure() {
+            InPhase(BuildPhase.Generating).BeforePlugin("nadena.dev.modular-avatar").Run("Check and Assign Dummy Avatar", CheckAndAssignDummyAvatar);
+            InPhase(BuildPhase.Transforming).AfterPlugin("nadena.dev.modular-avatar").Run("Rebake Humanoid", RebakeHumanoid);
+        }
 
-        static void Run(BuildContext ctx) {
+        static void CheckAndAssignDummyAvatar(BuildContext ctx) {
+            if (!ctx.AvatarRootObject.TryGetComponent(out RebakeHumanoid declaration)) return;
+            var animator = ctx.AvatarRootObject.GetComponent<Animator>();
+            var avatar = animator.avatar;
+            if (declaration.@override && (avatar == null || !avatar.isValid || !avatar.isHuman)) {
+                var transform = ctx.AvatarRootObject.transform;
+                transform.GetPositionAndRotation(out var orgPos, out var orgRot);
+                transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                HumanoidAvatarProcessor.Process(animator, ctx.AssetContainer, bones: declaration.boneMapping);
+                transform.SetPositionAndRotation(orgPos, orgRot);
+            }
+        }
+
+        static void RebakeHumanoid(BuildContext ctx) {
             if (!ctx.AvatarRootObject.TryGetComponent(out RebakeHumanoid declaration)) return;
             var transform = ctx.AvatarRootObject.transform;
             transform.GetPositionAndRotation(out var orgPos, out var orgRot);
@@ -38,7 +54,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 ctx.AssetContainer,
                 declaration.fixBoneOrientation,
                 declaration.fixCrossLegs,
-                declaration.@override ? declaration.overrideBones : null
+                declaration.@override ? declaration.boneMapping : null
             );
             #if VRC_SDK_VRCSDK3
             if (declaration.adjustViewpoint &&

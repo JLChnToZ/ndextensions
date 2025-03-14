@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace JLChnToZ.NDExtensions {
     [AddComponentMenu("JLChnToZ/Non-Destructive Extensions/Rebake Humanoid Avatar")]
@@ -15,7 +16,7 @@ namespace JLChnToZ.NDExtensions {
         public bool fixCrossLegs;
         [Tooltip("Use other transforms as bones instead of the original bones defined in the avatar.")]
         public bool @override;
-        public Transform[] overrideBones;
+        [FormerlySerializedAs("overrideBones")] public Transform[] boneMapping;
         Animator animator;
 
         public Animator Animator {
@@ -26,7 +27,7 @@ namespace JLChnToZ.NDExtensions {
         }
 
         public Transform GetBoneTransform(HumanBodyBones bone) =>
-            @override && overrideBones != null && overrideBones.Length > 0 ? overrideBones[(int)bone] :
+            @override && boneMapping != null && boneMapping.Length > 0 ? boneMapping[(int)bone] :
             Animator.GetBoneTransform(bone);
     }
 

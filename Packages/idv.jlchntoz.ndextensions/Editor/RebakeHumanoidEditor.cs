@@ -6,10 +6,11 @@ namespace JLChnToZ.NDExtensions.Editors {
     public class RebakeHumanoidEditor : Editor {
         static readonly GUIContent tempContent = new();
         static string[] boneNames;
-        SerializedProperty fixBoneOrientationProp, fixCrossLegsProp, autoCalculateFootOffsetProp, manualOffsetProp, overrideProp, overrideBonesProp;
+        SerializedProperty fixBoneOrientationProp, fixCrossLegsProp, autoCalculateFootOffsetProp, manualOffsetProp, overrideProp, boneMappingProp;
         #if VRC_SDK_VRCSDK3
         SerializedProperty adjustViewpointProp;
         #endif
+        Animator animator;
 
         void OnEnable() {
             fixBoneOrientationProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixBoneOrientation));
@@ -20,7 +21,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             adjustViewpointProp = serializedObject.FindProperty(nameof(RebakeHumanoid.adjustViewpoint));
             #endif
             overrideProp = serializedObject.FindProperty(nameof(RebakeHumanoid.@override));
-            overrideBonesProp = serializedObject.FindProperty(nameof(RebakeHumanoid.overrideBones));
+            boneMappingProp = serializedObject.FindProperty(nameof(RebakeHumanoid.boneMapping));
             if (boneNames == null) {
                 boneNames = new string[(int)HumanBodyBones.LastBone];
                 for (HumanBodyBones bone = 0; bone < HumanBodyBones.LastBone; bone++)
@@ -44,34 +45,53 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.PropertyField(fixCrossLegsProp);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Advanced", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(overrideProp);
+            Avatar avatar;
+            bool hasValidAvatar = (!animator && !(target as Component).TryGetComponent(out animator)) ||
+                ((avatar = animator.avatar) != null && avatar.isValid && avatar.isHuman);
+            if (!hasValidAvatar && !overrideProp.boolValue) {
+                overrideProp.boolValue = true;
+                boneMappingProp.isExpanded = true;
+            }
+            using (new EditorGUI.DisabledScope(!hasValidAvatar))
+            using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
+                EditorGUILayout.PropertyField(overrideProp);
+                if (changeCheck.changed && overrideProp.boolValue) boneMappingProp.isExpanded = true;
+            }
+            if (!hasValidAvatar)
+                EditorGUILayout.HelpBox("You don't have a valid humanoid avatar, manual bone mapping is required.", MessageType.Warning);
             if (overrideProp.boolValue) {
                 FetchBones();
                 bool expaanded;
                 using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
-                    expaanded = EditorGUILayout.Foldout(overrideBonesProp.isExpanded, overrideBonesProp.displayName, true);
-                    if (changeCheck.changed) overrideBonesProp.isExpanded = expaanded;
+                    expaanded = EditorGUILayout.Foldout(boneMappingProp.isExpanded, boneMappingProp.displayName, true);
+                    if (changeCheck.changed) boneMappingProp.isExpanded = expaanded;
                 }
                 if (expaanded)
                     using (new EditorGUI.IndentLevelScope()) {
+                        using (new EditorGUILayout.HorizontalScope()) {
+                            using (new EditorGUI.DisabledScope(!hasValidAvatar))
+                                if (GUILayout.Button("Fetch")) FetchBones(true);
+                            if (GUILayout.Button("Guess")) FetchBones(true, true);
+                        }
                         for (HumanBodyBones bone = 0; bone < HumanBodyBones.LastBone; bone++) {
                             tempContent.text = boneNames[(int)bone];
-                            EditorGUILayout.PropertyField(overrideBonesProp.GetArrayElementAtIndex((int)bone), tempContent);
+                            EditorGUILayout.PropertyField(boneMappingProp.GetArrayElementAtIndex((int)bone), tempContent);
                         }
-                    if (GUILayout.Button("Refresh")) FetchBones(true);
-                }
+                    }
             }
             serializedObject.ApplyModifiedProperties();
         }
 
-        void FetchBones(bool forced = false) {
-            if (overrideBonesProp.arraySize != (int)HumanBodyBones.LastBone) {
-                overrideBonesProp.arraySize = (int)HumanBodyBones.LastBone;
+        void FetchBones(bool forced = false, bool ignoreAvatar = false) {
+            if (boneMappingProp.arraySize != (int)HumanBodyBones.LastBone) {
+                boneMappingProp.arraySize = (int)HumanBodyBones.LastBone;
                 forced = true;
             }
-            if (forced && (target as Component).TryGetComponent(out Animator animator))
+            if (!forced) return;
+            var guessedBones = MecanimUtils.GuessHumanoidBodyBones((target as Component).transform, ignoreAvatar: ignoreAvatar);
+            if (guessedBones != null)
                 for (HumanBodyBones bone = 0; bone < HumanBodyBones.LastBone; bone++)
-                    overrideBonesProp.GetArrayElementAtIndex((int)bone).objectReferenceValue = animator.GetBoneTransform(bone);
+                    boneMappingProp.GetArrayElementAtIndex((int)bone).objectReferenceValue = guessedBones[(int)bone];
         }
     }
 }

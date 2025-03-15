@@ -47,7 +47,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.LabelField("Advanced", EditorStyles.boldLabel);
             Avatar avatar;
             bool hasValidAvatar = (!animator && !(target as Component).TryGetComponent(out animator)) ||
-                ((avatar = animator.avatar) != null && avatar.isValid && avatar.isHuman);
+                ((avatar = animator.avatar) != null && avatar.isHuman);
             if (!hasValidAvatar && !overrideProp.boolValue) {
                 overrideProp.boolValue = true;
                 boneMappingProp.isExpanded = true;

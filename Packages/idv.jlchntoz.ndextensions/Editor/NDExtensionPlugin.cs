@@ -21,7 +21,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (!ctx.AvatarRootObject.TryGetComponent(out RebakeHumanoid declaration)) return;
             var animator = ctx.AvatarRootObject.GetComponent<Animator>();
             var avatar = animator.avatar;
-            if (declaration.@override && (avatar == null || !avatar.isValid || !avatar.isHuman)) {
+            if (declaration.@override && (avatar == null || !avatar.isHuman)) {
                 var transform = ctx.AvatarRootObject.transform;
                 transform.GetPositionAndRotation(out var orgPos, out var orgRot);
                 transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
@@ -32,6 +32,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         static void RebakeHumanoid(BuildContext ctx) {
             if (!ctx.AvatarRootObject.TryGetComponent(out RebakeHumanoid declaration)) return;
+            if (!declaration.@override) declaration.RefetchBones(); // Force refetch bones
             var transform = ctx.AvatarRootObject.transform;
             transform.GetPositionAndRotation(out var orgPos, out var orgRot);
             transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity); // Make sure the avatar is at origin

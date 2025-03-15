@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -18,6 +19,7 @@ namespace JLChnToZ.NDExtensions {
         public bool @override;
         [FormerlySerializedAs("overrideBones")] public Transform[] boneMapping;
         Animator animator;
+        [NonSerialized] Transform[] fetchedBones;
 
         public Animator Animator {
             get {
@@ -26,9 +28,14 @@ namespace JLChnToZ.NDExtensions {
             }
         }
 
-        public Transform GetBoneTransform(HumanBodyBones bone) =>
-            @override && boneMapping != null && boneMapping.Length > 0 ? boneMapping[(int)bone] :
-            Animator.GetBoneTransform(bone);
+        public void RefetchBones() =>
+            fetchedBones = MecanimUtils.FetchHumanoidBodyBones(Animator.avatar, transform);
+
+        public Transform GetBoneTransform(HumanBodyBones bone) {
+            if (@override && boneMapping != null && boneMapping.Length > 0) return boneMapping[(int)bone];
+            if (fetchedBones == null || fetchedBones.Length == 0) RefetchBones();
+            return fetchedBones[(int)bone];
+        }
     }
 
     #if VRC_SDK_VRCSDK3

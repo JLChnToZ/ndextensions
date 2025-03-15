@@ -54,6 +54,8 @@ namespace JLChnToZ.NDExtensions.Editors {
         readonly Dictionary<Transform, Matrix4x4> movedBones = new();
         readonly Dictionary<Transform, TranslateRotate> cachedPositions = new();
         readonly HashSet<Transform> skeletonBoneTransforms = new();
+        readonly HashSet<string> boneNames = new();
+        readonly Dictionary<Transform, string> cachedRanamedBones = new();
         readonly UnityObject assetRoot;
         readonly Animator animator;
         readonly Transform root;
@@ -207,14 +209,12 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void RegenerateAvatar() {
-            var boneNames = new HashSet<string>();
             var transformsToAdd = new List<(Transform, int)>();
-            foreach (var bone in movedBones.Keys)
+            foreach (var bone in bones)
                 for (var parent = bone; parent != null && parent != root; parent = parent.parent) {
                     if (!skeletonBoneTransforms.Add(parent)) break;
                     boneNames.Add(parent.name);
                 }
-            var ambiguousNameMap = new Dictionary<Transform, string>();
             var stack = new Stack<(int, Transform)>();
             stack.Push((0, root));
             while (stack.TryPop(out var entry)) {
@@ -225,15 +225,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                 stack.Push((0, child));
                 if (skeletonBoneTransforms.Contains(child))
                     transformsToAdd.Add((child, stack.Count));
-                else if (boneNames.Contains(child.name)) {
-                    Debug.LogWarning($"[Humanoid Avatar Processor] Transform name \"{child.name}\" is ambiguous, this may prevents generated humanoid avatar working. You will have to fix it afterward.", child);
-                    ambiguousNameMap[child] = child.name;
-                    var temp = new string[boneNames.Count];
-                    boneNames.CopyTo(temp);
-                    var tempName = ObjectNames.GetUniqueName(temp, child.name);
-                    boneNames.Add(tempName);
-                    child.name = tempName;
-                }
+                else
+                    FixAmbiguousBone(child);
                 CachePosition(child, true);
             }
             int i;
@@ -290,11 +283,17 @@ namespace JLChnToZ.NDExtensions.Editors {
             animator.avatar = null;
             RestoreCachedPositions();
             avatar = AvatarBuilder.BuildHumanAvatar(root.gameObject, desc);
-            avatar.name = $"(Generated) {root.name} Avatar";
-            foreach (var kv in ambiguousNameMap) kv.Key.name = kv.Value;
+            if (avatar.isValid)
+                avatar.name = $"(Generated) {root.name} Avatar";
+            else {
+                DestroyImmediate(avatar);
+                avatar = null;
+            }
+            RestoreCachedBoneNames();
         }
 
         void ApplyAvatar() {
+            if (avatar == null) return;
             foreach (var child in skeletonBoneTransforms) CachePosition(child, true);
             animator.avatar = avatar;
             if (assetRoot != null) AssetDatabase.AddObjectToAsset(avatar, assetRoot);
@@ -313,6 +312,26 @@ namespace JLChnToZ.NDExtensions.Editors {
             foreach (var c in cachedPositions)
                 c.Value.ApplyTo(c.Key);
             cachedPositions.Clear();
+        }
+
+        bool FixAmbiguousBone(Transform bone) {
+            if (cachedRanamedBones.ContainsKey(bone)) return true;
+            var boneName = bone.name;
+            if (boneNames.Add(boneName)) return false;
+            cachedRanamedBones[bone] = boneName;
+            var temp = new string[boneNames.Count];
+            boneNames.CopyTo(temp);
+            boneName = ObjectNames.GetUniqueName(temp, boneName);
+            boneNames.Add(boneName);
+            bone.name = boneName;
+            return true;
+        }
+
+        void RestoreCachedBoneNames() {
+            foreach (var kv in cachedRanamedBones)
+                kv.Key.name = kv.Value;
+            cachedRanamedBones.Clear();
+            boneNames.Clear();
         }
         #endregion
     }

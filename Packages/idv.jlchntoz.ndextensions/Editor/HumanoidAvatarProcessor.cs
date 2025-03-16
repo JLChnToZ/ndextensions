@@ -63,28 +63,29 @@ namespace JLChnToZ.NDExtensions.Editors {
         Avatar avatar;
 
         public static void Process(Animator animator, UnityObject assetRoot, bool normalize = false, bool fixCrossLeg = false, Transform[] bones = null) {
-            var processor = new HumanoidAvatarProcessor(animator, assetRoot, bones);
-            if (normalize) {
-                processor.Normalize();
-                processor.UpdateBindposes();
-            }
-            if (fixCrossLeg)
-                processor.FixCrossLeg();
+            var processor = new HumanoidAvatarProcessor(animator, bones, assetRoot);
+            if (normalize) processor.Normalize();
+            processor.FixArmatureRoot();
+            processor.UpdateBindposes();
+            if (fixCrossLeg) processor.FixCrossLeg();
             processor.RegenerateAvatar();
             processor.ApplyAvatar();
         }
 
-        HumanoidAvatarProcessor(Animator animator, UnityObject assetRoot, Transform[] bones) {
-            if (animator == null) throw new ArgumentNullException(nameof(animator));
-            this.assetRoot = assetRoot;
+        HumanoidAvatarProcessor(Animator animator, Transform[] bones, UnityObject assetRoot) :
+            this(animator.transform, bones, animator.avatar, assetRoot) {
             this.animator = animator;
-            avatar = animator.avatar;
-            root = animator.transform;
-            if (bones == null || bones.Length != (int)HumanBodyBones.LastBone) {
+        }
+
+        HumanoidAvatarProcessor(Transform root, Transform[] bones, Avatar avatar, UnityObject assetRoot) {
+            this.root = root;
+            this.avatar = avatar;
+            this.assetRoot = assetRoot;
+            if (bones == null || bones.Length != HumanTrait.BoneCount) {
                 bones = MecanimUtils.GuessHumanoidBodyBones(root);
                 if (bones == null) throw new InvalidOperationException("Can not find humanoid bone mapping.");
             }
-            for (HumanBodyBones i = 0; i < HumanBodyBones.LastBone; i++){
+            for (var i = HumanBodyBones.Hips; i < HumanBodyBones.LastBone; i++) {
                 var bone = bones[(int)i];
                 if (bone != null) boneToHumanBone[bone] = i;
             }
@@ -106,8 +107,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                         break;
                 }
                 Transform twistBone = null;
-                for (int i = transform.childCount - 1; i >= 0; i--) {
-                    var child = transform.GetChild(i);
+                foreach (Transform child in transform) {
                     if (canContainTwistBone && child.name.IndexOf("twist", StringComparison.OrdinalIgnoreCase) >= 0) {
                         twistBone = child;
                         continue;
@@ -124,13 +124,15 @@ namespace JLChnToZ.NDExtensions.Editors {
                 }
                 RestoreCachedPositions();
             }
+        }
+
+        void FixArmatureRoot() {
             for (
                 var transform = bones[(int)HumanBodyBones.Hips].parent;
                 transform != null && transform != root;
                 transform = transform.parent
             ) {
-                for (int i = transform.childCount - 1; i >= 0; i--)
-                    CachePosition(transform.GetChild(i));
+                foreach (Transform child in transform) CachePosition(child);
                 var orgMatrix = transform.localToWorldMatrix;
                 transform.SetPositionAndRotation(root.position, root.rotation);
                 movedBones[transform] = transform.worldToLocalMatrix * orgMatrix;
@@ -141,7 +143,9 @@ namespace JLChnToZ.NDExtensions.Editors {
         void UpdateBindposes() {
             foreach (var skinnedMeshRenderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) {
                 var orgMesh = skinnedMeshRenderer.sharedMesh;
+                if (orgMesh == null) continue;
                 var bones = skinnedMeshRenderer.bones;
+                if (bones == null || bones.Length == 0) continue;
                 Matrix4x4[] bindposes = null;
                 for (int i = 0; i < bones.Length; i++) {
                     var bone = bones[i];
@@ -152,7 +156,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 }
                 if (bindposes == null) continue;
                 var clonedMesh = Instantiate(orgMesh);
-                clonedMesh.name = orgMesh.name;
+                clonedMesh.name = $"{orgMesh.name} (Tweaked)";
                 clonedMesh.bindposes = bindposes;
                 if (assetRoot != null) AssetDatabase.AddObjectToAsset(clonedMesh, assetRoot);
                 skinnedMeshRenderer.sharedMesh = clonedMesh;
@@ -243,7 +247,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                     scale = bone.localScale,
                 };
             i = 0;
-            for (int bone = 0; bone < (int)HumanBodyBones.LastBone; bone++) {
+            for (int bone = 0, boneCount = HumanTrait.BoneCount; bone < boneCount; bone++) {
                 var boneTransform = bones[bone];
                 if (boneTransform == null) continue;
                 humanBones[i++] = new HumanBone {
@@ -280,11 +284,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                     human = humanBones,
                     skeleton = skeletonBones,
                 };
-            animator.avatar = null;
+            if (animator != null) animator.avatar = null;
             RestoreCachedPositions();
             avatar = AvatarBuilder.BuildHumanAvatar(root.gameObject, desc);
             if (avatar.isValid)
-                avatar.name = $"(Generated) {root.name} Avatar";
+                avatar.name = $"{root.name} Avatar (Generated)";
             else {
                 DestroyImmediate(avatar);
                 avatar = null;
@@ -294,10 +298,8 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         void ApplyAvatar() {
             if (avatar == null) return;
-            foreach (var child in skeletonBoneTransforms) CachePosition(child, true);
-            animator.avatar = avatar;
+            if (animator != null) animator.avatar = avatar;
             if (assetRoot != null) AssetDatabase.AddObjectToAsset(avatar, assetRoot);
-            RestoreCachedPositions();
         }
         #endregion
 
@@ -336,18 +338,26 @@ namespace JLChnToZ.NDExtensions.Editors {
         #endregion
     }
 
-    struct TranslateRotate {
-        public Vector3 position;
-        public Quaternion rotation;
-        public bool isLocal;
+    readonly struct TranslateRotate {
+        public readonly Vector3 position;
+        public readonly Quaternion rotation;
+        public readonly bool isLocal;
 
         public TranslateRotate(Transform transform, bool isLocal = false) {
             if (isLocal) {
+                #if UNITY_2021_3_OR_NEWER
+                transform.GetLocalPositionAndRotation(out position, out rotation);
+                #else
                 position = transform.localPosition;
                 rotation = transform.localRotation;
+                #endif
             } else {
+                #if UNITY_2021_3_OR_NEWER
+                transform.GetPositionAndRotation(out position, out rotation);
+                #else
                 position = transform.position;
                 rotation = transform.rotation;
+                #endif
             }
             this.isLocal = isLocal;
         }

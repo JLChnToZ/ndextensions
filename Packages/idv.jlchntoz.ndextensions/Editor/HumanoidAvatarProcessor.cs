@@ -1,70 +1,45 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Animations;
 using UnityEditor;
 using UnityObject = UnityEngine.Object;
 using static UnityEngine.Object;
-using System.Reflection;
+
+#if VRC_SDK_VRCSDK3
+using VRC.Dynamics;
+#endif
 
 namespace JLChnToZ.NDExtensions.Editors {
     public sealed class HumanoidAvatarProcessor {
-        static readonly Dictionary<HumanBodyBones, (HumanBodyBones childBone, PointingDirection direction)> remapChildBones = new() {
-            [HumanBodyBones.LeftUpperLeg] = (HumanBodyBones.LeftLowerLeg, PointingDirection.Up),
-            [HumanBodyBones.LeftLowerLeg] = (HumanBodyBones.LeftFoot, PointingDirection.Up),
-            [HumanBodyBones.LeftFoot] = (HumanBodyBones.LeftToes, PointingDirection.Up),
-            [HumanBodyBones.RightUpperLeg] = (HumanBodyBones.RightLowerLeg, PointingDirection.Up),
-            [HumanBodyBones.RightLowerLeg] = (HumanBodyBones.RightFoot, PointingDirection.Up),
-            [HumanBodyBones.RightFoot] = (HumanBodyBones.RightToes, PointingDirection.Up),
-            [HumanBodyBones.LeftShoulder] = (HumanBodyBones.LeftUpperArm, PointingDirection.Left),
-            [HumanBodyBones.LeftUpperArm] = (HumanBodyBones.LeftLowerArm, PointingDirection.Left),
-            [HumanBodyBones.LeftLowerArm] = (HumanBodyBones.LeftHand, PointingDirection.Left),
-            [HumanBodyBones.LeftHand] = (HumanBodyBones.LastBone, PointingDirection.Left),
-            [HumanBodyBones.LeftThumbProximal] = (HumanBodyBones.LeftThumbIntermediate, PointingDirection.Left),
-            [HumanBodyBones.LeftThumbIntermediate] = (HumanBodyBones.LeftThumbDistal, PointingDirection.Left),
-            [HumanBodyBones.LeftThumbDistal] = (HumanBodyBones.LastBone, PointingDirection.Left),
-            [HumanBodyBones.LeftIndexProximal] = (HumanBodyBones.LeftIndexIntermediate, PointingDirection.Left),
-            [HumanBodyBones.LeftIndexIntermediate] = (HumanBodyBones.LeftIndexDistal, PointingDirection.Left),
-            [HumanBodyBones.LeftIndexDistal] = (HumanBodyBones.LastBone, PointingDirection.Left),
-            [HumanBodyBones.LeftMiddleProximal] = (HumanBodyBones.LeftMiddleIntermediate, PointingDirection.Left),
-            [HumanBodyBones.LeftMiddleIntermediate] = (HumanBodyBones.LeftMiddleDistal, PointingDirection.Left),
-            [HumanBodyBones.LeftMiddleDistal] = (HumanBodyBones.LastBone, PointingDirection.Left),
-            [HumanBodyBones.LeftRingProximal] = (HumanBodyBones.LeftRingIntermediate, PointingDirection.Left),
-            [HumanBodyBones.LeftRingIntermediate] = (HumanBodyBones.LeftRingDistal, PointingDirection.Left),
-            [HumanBodyBones.LeftRingDistal] = (HumanBodyBones.LastBone, PointingDirection.Left),
-            [HumanBodyBones.LeftLittleProximal] = (HumanBodyBones.LeftLittleIntermediate, PointingDirection.Left),
-            [HumanBodyBones.LeftLittleIntermediate] = (HumanBodyBones.LeftLittleDistal, PointingDirection.Left),
-            [HumanBodyBones.LeftLittleDistal] = (HumanBodyBones.LastBone, PointingDirection.Left),
-            [HumanBodyBones.RightShoulder] = (HumanBodyBones.RightUpperArm, PointingDirection.Right),
-            [HumanBodyBones.RightUpperArm] = (HumanBodyBones.RightLowerArm, PointingDirection.Right),
-            [HumanBodyBones.RightLowerArm] = (HumanBodyBones.RightHand, PointingDirection.Right),
-            [HumanBodyBones.RightHand] = (HumanBodyBones.LastBone, PointingDirection.Right),
-            [HumanBodyBones.RightThumbProximal] = (HumanBodyBones.RightThumbIntermediate, PointingDirection.Right),
-            [HumanBodyBones.RightThumbIntermediate] = (HumanBodyBones.RightThumbDistal, PointingDirection.Right),
-            [HumanBodyBones.RightThumbDistal] = (HumanBodyBones.LastBone, PointingDirection.Right),
-            [HumanBodyBones.RightIndexProximal] = (HumanBodyBones.RightIndexIntermediate, PointingDirection.Right),
-            [HumanBodyBones.RightIndexIntermediate] = (HumanBodyBones.RightIndexDistal, PointingDirection.Right),
-            [HumanBodyBones.RightIndexDistal] = (HumanBodyBones.LastBone, PointingDirection.Right),
-            [HumanBodyBones.RightMiddleProximal] = (HumanBodyBones.RightMiddleIntermediate, PointingDirection.Right),
-            [HumanBodyBones.RightMiddleIntermediate] = (HumanBodyBones.RightMiddleDistal, PointingDirection.Right),
-            [HumanBodyBones.RightMiddleDistal] = (HumanBodyBones.LastBone, PointingDirection.Right),
-            [HumanBodyBones.RightRingProximal] = (HumanBodyBones.RightRingIntermediate, PointingDirection.Right),
-            [HumanBodyBones.RightRingIntermediate] = (HumanBodyBones.RightRingDistal, PointingDirection.Right),
-            [HumanBodyBones.RightRingDistal] = (HumanBodyBones.LastBone, PointingDirection.Right),
-        };
+        static readonly int[] remapChildBones;
+        static readonly Queue<Transform> tempQueue = new();
         readonly Dictionary<Transform, HumanBodyBones> boneToHumanBone = new();
         readonly Dictionary<Transform, Matrix4x4> movedBones = new();
-        readonly Dictionary<Transform, TranslateRotate> cachedPositions = new();
+        readonly Dictionary<(Component component, int refId), TranslateRotate> cachedPositions = new();
         readonly HashSet<Transform> skeletonBoneTransforms = new();
         readonly HashSet<string> boneNames = new();
         readonly Dictionary<Transform, string> cachedRanamedBones = new();
+        readonly Dictionary<Transform, List<(Component component, int refId)>> affectedComponents = new();
         readonly UnityObject assetRoot;
         readonly Animator animator;
         readonly Transform root;
         readonly Transform[] bones;
         Avatar avatar;
 
+        static HumanoidAvatarProcessor() {
+            remapChildBones = new int[(int)HumanBodyBones.LastBone];
+            for (int bone = 0; bone < remapChildBones.Length; bone++) {
+                remapChildBones[bone] = (int)HumanBodyBones.LastBone;
+                var parentBone = HumanTrait.GetParentBone(bone);
+                if (parentBone >= 0)
+                    remapChildBones[parentBone] = remapChildBones[parentBone] == (int)HumanBodyBones.LastBone ? bone : -1;
+            }
+        }
+
         public static void Process(Animator animator, UnityObject assetRoot, bool normalize = false, bool fixCrossLeg = false, Transform[] bones = null) {
             var processor = new HumanoidAvatarProcessor(animator, bones, assetRoot);
+            processor.ScanAffectedComponents();
             if (normalize) processor.Normalize();
             processor.FixArmatureRoot();
             processor.UpdateBindposes();
@@ -83,7 +58,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             this.root = root;
             this.avatar = avatar;
             this.assetRoot = assetRoot;
-            if (bones == null || bones.Length != HumanTrait.BoneCount) {
+            if (bones == null || bones.Length != (int)HumanBodyBones.LastBone) {
                 bones = MecanimUtils.GuessHumanoidBodyBones(root);
                 if (bones == null) throw new InvalidOperationException("Can not find humanoid bone mapping.");
             }
@@ -95,6 +70,48 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         #region Steps
+        void ScanAffectedComponents() {
+            var tempComponents = new List<Component>();
+            tempQueue.Enqueue(root);
+            while (tempQueue.TryDequeue(out var transform)) {
+                foreach (Transform child in transform) tempQueue.Enqueue(child);
+                transform.GetComponents(tempComponents);
+                foreach (var c in tempComponents) {
+                    if (c is Collider collider) {
+                        AddAffectedComponent(collider.transform, collider);
+                        continue;
+                    }
+                    if (c is IConstraint constraint) {
+                        for (int i = 0, count = constraint.sourceCount; i < count; i++)
+                            AddAffectedComponent(constraint.GetSource(i).sourceTransform, constraint as Component, i);
+                        continue;
+                    }
+                    #if VRC_SDK_VRCSDK3
+                    if (c is VRCPhysBoneColliderBase pbc) {
+                        AddAffectedComponent(pbc.GetRootTransform(), pbc);
+                        continue;
+                    }
+                    if (c is ContactBase contact) {
+                        AddAffectedComponent(contact.GetRootTransform(), contact);
+                        continue;
+                    }
+                    if (c is VRCConstraintBase vc) {
+                        for (int i = 0; i < vc.Sources.Count; i++)
+                            AddAffectedComponent(vc.Sources[i].SourceTransform, vc, i);
+                        continue;
+                    }
+                    #endif
+                }
+            }
+            tempQueue.Clear();
+        }
+
+        void AddAffectedComponent(Transform target, Component component, int refId = -1) {
+            if (!affectedComponents.TryGetValue(target, out var list))
+                affectedComponents[target] = list = new();
+            list.Add((component, refId));
+        }
+
         void Normalize() {
             for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++) {
                 var transform = bones[(int)bone];
@@ -116,11 +133,13 @@ namespace JLChnToZ.NDExtensions.Editors {
                     }
                     CachePosition(child);
                 }
+                CacheAffectedComponents(transform);
                 var orgMatrix = transform.localToWorldMatrix;
                 var twistOrgMatrix = twistBone != null ? twistBone.localToWorldMatrix : Matrix4x4.identity;
-                transform.rotation = GetAdjustedRotation(bone, transform);
+                transform.rotation = GetAdjustedRotation((int)bone, transform);
                 movedBones[transform] = transform.worldToLocalMatrix * orgMatrix;
                 if (twistBone != null) {
+                    CacheAffectedComponents(twistBone);
                     twistBone.localRotation = Quaternion.identity;
                     movedBones[twistBone] = twistBone.worldToLocalMatrix * twistOrgMatrix;
                 }
@@ -135,6 +154,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 transform = transform.parent
             ) {
                 foreach (Transform child in transform) CachePosition(child);
+                CacheAffectedComponents(transform);
                 var orgMatrix = transform.localToWorldMatrix;
                 transform.SetPositionAndRotation(root.position, root.rotation);
                 movedBones[transform] = transform.worldToLocalMatrix * orgMatrix;
@@ -143,7 +163,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void FixSiblings() {
-            for (int i = HumanTrait.BoneCount - 1; i >= 0; i--) FixSibling(i);
+            for (int i = (int)HumanBodyBones.LastBone - 1; i >= 0; i--) FixSibling(i);
             FixSibling((int)HumanBodyBones.Spine);
         }
 
@@ -175,28 +195,31 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
         }
 
-        Quaternion GetAdjustedRotation(HumanBodyBones bone, Transform transform) {
-            if (!remapChildBones.TryGetValue(bone, out var info) ||
-                info.direction == PointingDirection.NoChange)
-                return root.rotation;
-            var refSrc = transform;
-            var refDist = info.childBone < HumanBodyBones.LastBone ?
-                bones[(int)info.childBone] :
-                null;
-            if (refDist == null) {
-                refSrc = bones[HumanTrait.GetParentBone((int)bone)];
-                refDist = transform;
+        Quaternion GetAdjustedRotation(int bone, Transform transform) {
+            switch ((HumanBodyBones)bone) {
+                case HumanBodyBones.Hips:
+                case HumanBodyBones.LeftEye:
+                case HumanBodyBones.RightEye:
+                    return root.rotation;
             }
-            var up = (refDist.position - refSrc.position).normalized;
-            Vector3 forward;
-            switch (info.direction) {
-                case PointingDirection.Up: forward = -root.right; break;
-                case PointingDirection.Left: forward = root.forward; break;
-                case PointingDirection.Right: forward = -root.forward; break;
-                case PointingDirection.Forward: forward = root.up; break;
-                default: return root.rotation;
+            int childBone = remapChildBones[bone];
+            bool hasUp = false;
+            Vector3 up = default;
+            if (childBone >= 0 && childBone < (int)HumanBodyBones.LastBone) {
+                var refDist = bones[childBone];
+                if (refDist != null) {
+                    up = Vector3.Normalize(refDist.position - transform.position);
+                    hasUp = true;
+                }
             }
-            return Quaternion.LookRotation(Vector3.Cross(up, forward), up);
+            while (!hasUp && (bone = HumanTrait.GetParentBone(bone)) >= 0) {
+                var refSrc = bones[bone];
+                if (refSrc != null) {
+                    up = Vector3.Normalize(transform.position - refSrc.position);
+                    hasUp = true;
+                }
+            }
+            return hasUp ? Quaternion.LookRotation(-Vector3.Cross(Vector3.Cross(up, root.up), up), up) : root.rotation;
         }
 
         void FixCrossLeg() {
@@ -213,6 +236,9 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void FixCrossLegSide(Transform thigh, Transform knee, Transform foot) {
+            CacheAffectedComponents(thigh);
+            CacheAffectedComponents(knee);
+            CacheAffectedComponents(foot);
             var vector = thigh.InverseTransformPoint(knee.position).normalized;
             if (Mathf.Abs(vector.x) < 0.001 && vector.z < 0) return; // Already fixed
             var footRotation = foot.rotation;
@@ -222,6 +248,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             thigh.localRotation = rotation * thigh.localRotation;
             knee.localRotation = Quaternion.Inverse(rotation) * knee.localRotation;
             foot.rotation = footRotation;
+            RestoreCachedPositions();
         }
 
         void RegenerateAvatar() {
@@ -230,6 +257,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                     if (!skeletonBoneTransforms.Add(parent)) break;
                     boneNames.Add(parent.name);
                 }
+            if (bones[0].parent == root) {
+                skeletonBoneTransforms.Add(root);
+                boneNames.Add(root.name);
+            }
             var stack = new Stack<(int, Transform)>();
             stack.Push((0, root));
             while (stack.TryPop(out var entry)) {
@@ -248,7 +279,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var skeletonBones = Array.ConvertAll(transformsToAdd, ToSkeletonBone);
             var humanBones = new HumanBone[boneToHumanBone.Count];
             var humanBoneNames = HumanTrait.BoneName;
-            for (int i = 0, bone = 0, boneCount = HumanTrait.BoneCount; bone < boneCount; bone++) {
+            for (int i = 0, bone = 0; bone < (int)HumanBodyBones.LastBone; bone++) {
                 var boneTransform = bones[bone];
                 if (boneTransform == null) continue;
                 humanBones[i++] = new HumanBone {
@@ -312,13 +343,19 @@ namespace JLChnToZ.NDExtensions.Editors {
         #endregion
 
         #region Utility
-        void CachePosition(Transform transform, bool isLocal = false) {
-            cachedPositions[transform] = new TranslateRotate(transform, isLocal);
+        void CachePosition(Component component, bool isLocal = false, int refId = -1) =>
+            cachedPositions[(component, refId)] = new(component, isLocal, refId);
+
+        void CacheAffectedComponents(Transform transform) {
+            if (transform == null) return;
+            if (affectedComponents.TryGetValue(transform, out var components))
+                foreach (var (component, refId) in components)
+                    CachePosition(component, refId: refId);
         }
 
         void RestoreCachedPositions() {
             foreach (var c in cachedPositions)
-                c.Value.ApplyTo(c.Key);
+                c.Value.ApplyTo(c.Key.component, c.Key.refId);
             cachedPositions.Clear();
         }
 
@@ -342,6 +379,10 @@ namespace JLChnToZ.NDExtensions.Editors {
             boneNames.Clear();
         }
         #endregion
+
+        struct RemapBoneData {
+            public int childBone;
+        }
     }
 
     readonly struct TranslateRotate {
@@ -349,43 +390,150 @@ namespace JLChnToZ.NDExtensions.Editors {
         public readonly Quaternion rotation;
         public readonly bool isLocal;
 
-        public TranslateRotate(Transform transform, bool isLocal = false) {
-            if (isLocal) {
-                #if UNITY_2021_3_OR_NEWER
-                transform.GetLocalPositionAndRotation(out position, out rotation);
-                #else
-                position = transform.localPosition;
-                rotation = transform.localRotation;
-                #endif
-            } else {
-                #if UNITY_2021_3_OR_NEWER
-                transform.GetPositionAndRotation(out position, out rotation);
-                #else
-                position = transform.position;
-                rotation = transform.rotation;
-                #endif
+        public TranslateRotate(Component component, bool isLocal = false, int refId = -1) {
+            if (component is Transform transform) {
+                if (isLocal) {
+                    #if UNITY_2021_3_OR_NEWER
+                    transform.GetLocalPositionAndRotation(out position, out rotation);
+                    #else
+                    position = transform.localPosition;
+                    rotation = transform.localRotation;
+                    #endif
+                } else {
+                    #if UNITY_2021_3_OR_NEWER
+                    transform.GetPositionAndRotation(out position, out rotation);
+                    #else
+                    position = transform.position;
+                    rotation = transform.rotation;
+                    #endif
+                }
+            } else if (component is BoxCollider bc) {
+                if (isLocal) {
+                    position = bc.center;
+                    rotation = Quaternion.identity;
+                } else {
+                    position = bc.transform.TransformPoint(bc.center);
+                    rotation = bc.transform.rotation;
+                }
+            } else if (component is SphereCollider sc) {
+                if (isLocal) {
+                    position = sc.center;
+                    rotation = Quaternion.identity;
+                } else {
+                    position = sc.transform.TransformPoint(sc.center);
+                    rotation = sc.transform.rotation;
+                }
+            } else if (component is CapsuleCollider cc) {
+                if (isLocal) {
+                    position = cc.center;
+                    rotation = Quaternion.identity;
+                } else {
+                    position = cc.transform.TransformPoint(cc.center);
+                    rotation = cc.transform.rotation;
+                }
+            }
+            #if VRC_SDK_VRCSDK3
+            else if (component is ContactBase contact) {
+                if (isLocal) {
+                    position = contact.position;
+                    rotation = contact.rotation;
+                } else {
+                    transform = contact.GetRootTransform();
+                    position = transform.TransformPoint(contact.position);
+                    rotation = transform.rotation * contact.rotation;
+                }
+            } else if (component is VRCPhysBoneColliderBase pbc) {
+                if (isLocal) {
+                    position = pbc.position;
+                    rotation = pbc.rotation;
+                } else {
+                    transform = pbc.GetRootTransform();
+                    position = transform.TransformPoint(pbc.position);
+                    rotation = transform.rotation * pbc.rotation;
+                }
+            } else if (component is VRCConstraintBase vrcConstraint) {
+                var source = vrcConstraint.Sources[refId];
+                if (isLocal) {
+                    position = source.ParentPositionOffset;
+                    rotation = Quaternion.identity;
+                } else {
+                    transform = source.SourceTransform;
+                    position = transform.TransformPoint(source.ParentPositionOffset);
+                    rotation = transform.rotation;
+                }
+            }
+            #endif
+            else {
+                position = Vector3.zero;
+                rotation = Quaternion.identity;
             }
             this.isLocal = isLocal;
         }
 
-        public void ApplyTo(Transform transform) {
-            if (isLocal) {
-                #if UNITY_2021_3_OR_NEWER
-                transform.SetLocalPositionAndRotation(position, rotation);
-                #else
-                transform.localPosition = position;
-                transform.localRotation = rotation;
-                #endif
-            } else
-                transform.SetPositionAndRotation(position, rotation);
+        public void ApplyTo(Component component, int refId = -1) {
+            if (component is Transform transform) {
+                if (isLocal) {
+                    #if UNITY_2021_3_OR_NEWER
+                    transform.SetLocalPositionAndRotation(position, rotation);
+                    #else
+                    transform.localPosition = position;
+                    transform.localRotation = rotation;
+                    #endif
+                } else
+                    transform.SetPositionAndRotation(position, rotation);
+                return;
+            }
+            if (component is BoxCollider bc) {
+                if (isLocal) bc.center = position;
+                else bc.center = bc.transform.InverseTransformPoint(position);
+                return;
+            }
+            if (component is SphereCollider sc) {
+                if (isLocal) sc.center = position;
+                else sc.center = sc.transform.InverseTransformPoint(position);
+                return;
+            }
+            if (component is CapsuleCollider cc) {
+                if (isLocal) cc.center = position;
+                else cc.center = cc.transform.InverseTransformPoint(position);
+                return;
+            }
+            #if VRC_SDK_VRCSDK3
+            if (component is ContactBase contact) {
+                if (isLocal) {
+                    contact.position = position;
+                    contact.rotation = rotation;
+                } else {
+                    transform = contact.GetRootTransform();
+                    contact.position = transform.InverseTransformPoint(position);
+                    contact.rotation = Quaternion.Inverse(transform.rotation) * rotation;
+                }
+                return;
+            }
+            if (component is VRCPhysBoneColliderBase pbc) {
+                if (isLocal) {
+                    pbc.position = position;
+                    pbc.rotation = rotation;
+                } else {
+                    transform = pbc.GetRootTransform();
+                    pbc.position = transform.InverseTransformPoint(position);
+                    pbc.rotation = Quaternion.Inverse(transform.rotation) * rotation;
+                }
+                return;
+            }
+            if (component is VRCConstraintBase vrcConstraint) {
+                var src = vrcConstraint.Sources[refId];
+                if (isLocal)
+                    src.ParentPositionOffset = position;
+                else {
+                    transform = src.SourceTransform;
+                    src.ParentPositionOffset = transform.InverseTransformPoint(position);
+                    src.ParentRotationOffset += (Quaternion.Inverse(transform.rotation) * rotation).eulerAngles;
+                }
+                vrcConstraint.Sources[refId] = src;
+                return;
+            }
+            #endif
         }
-    }
-
-    enum PointingDirection : byte {
-        NoChange,
-        Left,
-        Right,
-        Up,
-        Forward,
     }
 }

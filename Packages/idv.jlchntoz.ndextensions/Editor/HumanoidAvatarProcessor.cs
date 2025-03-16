@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityObject = UnityEngine.Object;
 using static UnityEngine.Object;
+using System.Reflection;
 
 namespace JLChnToZ.NDExtensions.Editors {
     public sealed class HumanoidAvatarProcessor {
@@ -68,6 +69,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             processor.FixArmatureRoot();
             processor.UpdateBindposes();
             if (fixCrossLeg) processor.FixCrossLeg();
+            processor.FixSiblings();
             processor.RegenerateAvatar();
             processor.ApplyAvatar();
         }
@@ -138,6 +140,16 @@ namespace JLChnToZ.NDExtensions.Editors {
                 movedBones[transform] = transform.worldToLocalMatrix * orgMatrix;
                 RestoreCachedPositions();
             }
+        }
+
+        void FixSiblings() {
+            for (int i = HumanTrait.BoneCount - 1; i >= 0; i--) FixSibling(i);
+            FixSibling((int)HumanBodyBones.Spine);
+        }
+
+        void FixSibling(int boneIndex) {
+            if (bones[boneIndex] == null) return;
+            bones[boneIndex].SetAsFirstSibling();
         }
 
         void UpdateBindposes() {
@@ -213,7 +225,6 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void RegenerateAvatar() {
-            var transformsToAdd = new List<(Transform, int)>();
             foreach (var bone in bones)
                 for (var parent = bone; parent != null && parent != root; parent = parent.parent) {
                     if (!skeletonBoneTransforms.Add(parent)) break;
@@ -227,27 +238,17 @@ namespace JLChnToZ.NDExtensions.Editors {
                 var child = bone.GetChild(index);
                 stack.Push((index + 1, bone));
                 stack.Push((0, child));
-                if (skeletonBoneTransforms.Contains(child))
-                    transformsToAdd.Add((child, stack.Count));
-                else
+                if (!skeletonBoneTransforms.Contains(child))
                     FixAmbiguousBone(child);
                 CachePosition(child, true);
             }
-            int i;
-            var skeletonBones = new SkeletonBone[transformsToAdd.Count];
+            var transformsToAdd = new Transform[skeletonBoneTransforms.Count];
+            skeletonBoneTransforms.CopyTo(transformsToAdd);
+            Array.Sort(transformsToAdd, new HierarchyComparer(true));
+            var skeletonBones = Array.ConvertAll(transformsToAdd, ToSkeletonBone);
             var humanBones = new HumanBone[boneToHumanBone.Count];
             var humanBoneNames = HumanTrait.BoneName;
-            transformsToAdd.Sort(CompareDepth);
-            i = 0;
-            foreach (var (bone, _) in transformsToAdd)
-                skeletonBones[i++] = new SkeletonBone {
-                    name = bone.name,
-                    position = bone.localPosition,
-                    rotation = bone.localRotation,
-                    scale = bone.localScale,
-                };
-            i = 0;
-            for (int bone = 0, boneCount = HumanTrait.BoneCount; bone < boneCount; bone++) {
+            for (int i = 0, bone = 0, boneCount = HumanTrait.BoneCount; bone < boneCount; bone++) {
                 var boneTransform = bones[bone];
                 if (boneTransform == null) continue;
                 humanBones[i++] = new HumanBone {
@@ -296,6 +297,13 @@ namespace JLChnToZ.NDExtensions.Editors {
             RestoreCachedBoneNames();
         }
 
+        SkeletonBone ToSkeletonBone(Transform bone) => new() {
+            name = bone.name,
+            position = bone.localPosition,
+            rotation = bone.localRotation,
+            scale = bone.localScale,
+        };
+
         void ApplyAvatar() {
             if (avatar == null) return;
             if (animator != null) animator.avatar = avatar;
@@ -304,8 +312,6 @@ namespace JLChnToZ.NDExtensions.Editors {
         #endregion
 
         #region Utility
-        static int CompareDepth((Transform, int) a, (Transform, int) b) => a.Item2 - b.Item2;
-
         void CachePosition(Transform transform, bool isLocal = false) {
             cachedPositions[transform] = new TranslateRotate(transform, isLocal);
         }

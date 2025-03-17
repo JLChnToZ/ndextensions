@@ -18,6 +18,7 @@ namespace JLChnToZ.NDExtensions {
         [Tooltip("Use other transforms as bones instead of the original bones defined in the avatar.")]
         public bool @override;
         [FormerlySerializedAs("overrideBones")] public Transform[] boneMapping;
+        public OverrideHumanDescription overrideHuman;
         Animator animator;
         [NonSerialized] Transform[] fetchedBones;
 
@@ -38,10 +39,10 @@ namespace JLChnToZ.NDExtensions {
         }
     }
 
-    #if VRC_SDK_VRCSDK3
+#if VRC_SDK_VRCSDK3
     public partial class RebakeHumanoid : VRC.SDKBase.IEditorOnly {
         [Tooltip("Auto adjusts view point to match the avatar's eye level.")]
         public bool adjustViewpoint;
     }
-    #endif
+#endif
 }

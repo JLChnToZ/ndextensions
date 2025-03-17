@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 namespace JLChnToZ.NDExtensions {
-    public class HierarchyComparer: IComparer<Transform> {
+    public class HierarchyComparer : IComparer<Transform> {
         readonly Dictionary<Transform, float> scores = new();
         readonly bool depthFirst;
 
@@ -11,9 +11,9 @@ namespace JLChnToZ.NDExtensions {
         public void ClearCache() => scores.Clear();
 
         public int Compare(Transform x, Transform y) {
-            if(x == y) return 0;
-            if(x == null) return -1;
-            if(y == null) return 1;
+            if (x == y) return 0;
+            if (x == null) return -1;
+            if (y == null) return 1;
             return GetScore(x).CompareTo(GetScore(y));
         }
 

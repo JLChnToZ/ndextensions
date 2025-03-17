@@ -16,7 +16,6 @@ namespace JLChnToZ.NDExtensions.Editors {
         readonly Transform root;
         readonly Transform[] bones;
         readonly OverrideHumanDescription overrideHuman;
-        Avatar avatar;
 
         static HumanoidAvatarProcessor() {
             remapChildBones = new int[(int)HumanBodyBones.LastBone];
@@ -112,7 +111,6 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         HumanoidAvatarProcessor(Transform root, Transform[] bones, Avatar avatar, UnityObject assetRoot, OverrideHumanDescription? overrideHuman) {
             this.root = root;
-            this.avatar = avatar;
             this.assetRoot = assetRoot;
             this.overrideHuman = ResolveOverrideHumanDescription(overrideHuman, avatar);
             if (bones == null || bones.Length != (int)HumanBodyBones.LastBone) {

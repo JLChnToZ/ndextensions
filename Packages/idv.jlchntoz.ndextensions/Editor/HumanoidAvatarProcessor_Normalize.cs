@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 
 namespace JLChnToZ.NDExtensions.Editors {
-    public sealed partial class HumanoidAvatarProcessor {
+    public partial class HumanoidAvatarProcessor {
         #region Normalize Bone Rotation
         void Normalize() {
             for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++) {

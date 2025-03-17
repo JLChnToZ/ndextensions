@@ -14,6 +14,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         SerializedProperty fixBoneOrientationProp;
         SerializedProperty fixCrossLegsProp;
         SerializedProperty autoCalculateFootOffsetProp;
+        SerializedProperty fixHoverFeetProp;
         SerializedProperty manualOffsetProp;
         SerializedProperty overrideProp;
         SerializedProperty boneMappingProp;
@@ -36,6 +37,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             fixBoneOrientationProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixBoneOrientation));
             fixCrossLegsProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixCrossLegs));
             autoCalculateFootOffsetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.autoCalculateFootOffset));
+            fixHoverFeetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixHoverFeet));
             manualOffsetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.manualOffset));
             #if VRC_SDK_VRCSDK3
             adjustViewpointProp = serializedObject.FindProperty(nameof(RebakeHumanoid.adjustViewpoint));
@@ -101,6 +103,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.Space();
             EditorGUILayout.PropertyField(manualOffsetProp);
             EditorGUILayout.PropertyField(autoCalculateFootOffsetProp);
+            if (autoCalculateFootOffsetProp.boolValue)
+                using (new EditorGUI.IndentLevelScope())
+                    EditorGUILayout.PropertyField(fixHoverFeetProp);
             EditorGUILayout.Space();
             EditorGUILayout.HelpBox("These options are for attempting to fix issues caused by bad rigging.", MessageType.None);
             EditorGUILayout.PropertyField(fixBoneOrientationProp);

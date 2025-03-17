@@ -20,7 +20,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (hips != null) {
                 if (declaration.autoCalculateFootOffset) {
                     var offset = SoleResolver.FindOffset(declaration, ctx.AvatarRootObject);
-                    if (offset < 0) hips.position += new Vector3(0, -offset, 0);
+                    if (declaration.fixHoverFeet || offset < 0) hips.position += new Vector3(0, -offset, 0);
                 }
                 hips.position += declaration.manualOffset;
             }

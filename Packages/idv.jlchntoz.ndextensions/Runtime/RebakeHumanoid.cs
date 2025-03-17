@@ -11,6 +11,8 @@ namespace JLChnToZ.NDExtensions {
         public Vector3 manualOffset;
         [Tooltip("Automatically calculates the avatar's foot offset by detecting the sole of the model (slow).")]
         public bool autoCalculateFootOffset;
+        [Tooltip("Also snaps feet to the ground if it is hovering.")]
+        public bool fixHoverFeet;
         [Tooltip("Rotates the armature bones potentially fixes compatibility to mecanim systems such as IK, gestures, etc. cause by bad rigging.")]
         public bool fixBoneOrientation;
         [Tooltip("Attempt sightly adjusts leg bones rest pose to fix cross-legs issue cause by bad rigging.")]

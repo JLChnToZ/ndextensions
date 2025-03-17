@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Animations;
 using UnityEditor;
-
+using static UnityEngine.Object;
 #if VRC_SDK_VRCSDK3
 using VRC.Dynamics;
 #endif
@@ -12,6 +12,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         static readonly Queue<Transform> tempQueue = new();
         readonly Dictionary<Transform, List<(Component component, int refId)>> affectedComponents = new();
         readonly Dictionary<(Component component, int refId), TranslateRotate> cachedPositions = new();
+        readonly Dictionary<Transform, Matrix4x4> movedBones = new();
         readonly HashSet<string> boneNames = new();
         readonly Dictionary<Transform, string> cachedRanamedBones = new();
 
@@ -91,6 +92,37 @@ namespace JLChnToZ.NDExtensions.Editors {
                 kv.Key.name = kv.Value;
             cachedRanamedBones.Clear();
             boneNames.Clear();
+        }
+
+        void RecordMovedBone(Transform bone, Matrix4x4 orgL2W) {
+            var deltaMatrix = bone.worldToLocalMatrix * orgL2W;
+            if (movedBones.TryGetValue(bone, out var matrix))
+                movedBones[bone] = matrix * deltaMatrix;
+            else
+                movedBones.Add(bone, deltaMatrix);
+        }
+
+        void UpdateBindposes() {
+            foreach (var skinnedMeshRenderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) {
+                var orgMesh = skinnedMeshRenderer.sharedMesh;
+                if (orgMesh == null) continue;
+                var bones = skinnedMeshRenderer.bones;
+                if (bones == null || bones.Length == 0) continue;
+                Matrix4x4[] bindposes = null;
+                for (int i = 0; i < bones.Length; i++) {
+                    var bone = bones[i];
+                    if (bone != null && movedBones.TryGetValue(bone, out var deltaMatrix)) {
+                        if (bindposes == null) bindposes = orgMesh.bindposes;
+                        bindposes[i] = deltaMatrix * bindposes[i];
+                    }
+                }
+                if (bindposes == null) continue;
+                var clonedMesh = Instantiate(orgMesh);
+                clonedMesh.name = $"{orgMesh.name} (Tweaked)";
+                clonedMesh.bindposes = bindposes;
+                if (assetRoot != null) AssetDatabase.AddObjectToAsset(clonedMesh, assetRoot);
+                skinnedMeshRenderer.sharedMesh = clonedMesh;
+            }
         }
     }
 }

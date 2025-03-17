@@ -43,11 +43,11 @@ namespace JLChnToZ.NDExtensions.Editors {
             var orgMatrix = transform.localToWorldMatrix;
             var twistOrgMatrix = twistBone != null ? twistBone.localToWorldMatrix : Matrix4x4.identity;
             transform.rotation = GetAdjustedRotation((int)bone, transform);
-            movedBones[transform] = transform.worldToLocalMatrix * orgMatrix;
+            RecordMovedBone(transform, orgMatrix);
             if (twistBone != null) {
                 CacheAffectedComponents(twistBone);
                 twistBone.localRotation = Quaternion.identity;
-                movedBones[twistBone] = twistBone.worldToLocalMatrix * twistOrgMatrix;
+                RecordMovedBone(twistBone, twistOrgMatrix);
             }
             RestoreCachedPositions();
         }
@@ -91,7 +91,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 CacheAffectedComponents(transform);
                 var orgMatrix = transform.localToWorldMatrix;
                 transform.SetPositionAndRotation(root.position, root.rotation);
-                movedBones[transform] = transform.worldToLocalMatrix * orgMatrix;
+                RecordMovedBone(transform, orgMatrix);
                 RestoreCachedPositions();
             }
         }

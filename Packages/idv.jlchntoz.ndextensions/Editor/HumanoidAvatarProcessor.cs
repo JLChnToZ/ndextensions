@@ -9,7 +9,6 @@ namespace JLChnToZ.NDExtensions.Editors {
     public sealed partial class HumanoidAvatarProcessor {
         static readonly int[] remapChildBones;
         readonly Dictionary<Transform, HumanBodyBones> boneToHumanBone = new();
-        readonly Dictionary<Transform, Matrix4x4> movedBones = new();
         readonly HashSet<Transform> skeletonBoneTransforms = new();
         readonly UnityObject assetRoot;
         readonly Animator animator;
@@ -123,29 +122,6 @@ namespace JLChnToZ.NDExtensions.Editors {
                 if (bone != null) boneToHumanBone[bone] = i;
             }
             this.bones = bones;
-        }
-
-        void UpdateBindposes() {
-            foreach (var skinnedMeshRenderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) {
-                var orgMesh = skinnedMeshRenderer.sharedMesh;
-                if (orgMesh == null) continue;
-                var bones = skinnedMeshRenderer.bones;
-                if (bones == null || bones.Length == 0) continue;
-                Matrix4x4[] bindposes = null;
-                for (int i = 0; i < bones.Length; i++) {
-                    var bone = bones[i];
-                    if (bone != null && movedBones.TryGetValue(bone, out var deltaMatrix)) {
-                        if (bindposes == null) bindposes = orgMesh.bindposes;
-                        bindposes[i] = deltaMatrix * bindposes[i];
-                    }
-                }
-                if (bindposes == null) continue;
-                var clonedMesh = Instantiate(orgMesh);
-                clonedMesh.name = $"{orgMesh.name} (Tweaked)";
-                clonedMesh.bindposes = bindposes;
-                if (assetRoot != null) AssetDatabase.AddObjectToAsset(clonedMesh, assetRoot);
-                skinnedMeshRenderer.sharedMesh = clonedMesh;
-            }
         }
 
         bool RegenerateAvatar() {

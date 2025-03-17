@@ -38,6 +38,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var processor = new HumanoidAvatarProcessor(animator, bones, assetRoot, overrideHuman);
             processor.ScanAffectedComponents();
             if (normalize) processor.Normalize();
+            else if (fixCrossLeg) processor.NormalizeLeg();
             processor.FixArmatureRoot();
             processor.UpdateBindposes();
             if (fixCrossLeg) processor.FixCrossLeg();

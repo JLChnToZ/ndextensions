@@ -5,42 +5,51 @@ namespace JLChnToZ.NDExtensions.Editors {
     public partial class HumanoidAvatarProcessor {
         #region Normalize Bone Rotation
         void Normalize() {
-            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++) {
-                var transform = bones[(int)bone];
-                if (transform == null) continue;
-                bool canContainTwistBone = false;
-                switch (bone) {
-                    case HumanBodyBones.LeftUpperLeg:
-                    case HumanBodyBones.RightUpperLeg:
-                    case HumanBodyBones.LeftLowerLeg:
-                    case HumanBodyBones.RightLowerLeg:
-                    case HumanBodyBones.LeftUpperArm:
-                    case HumanBodyBones.RightUpperArm:
-                    case HumanBodyBones.LeftLowerArm:
-                    case HumanBodyBones.RightLowerArm:
-                        canContainTwistBone = true;
-                        break;
-                }
-                Transform twistBone = null;
-                foreach (Transform child in transform) {
-                    if (canContainTwistBone && child.name.IndexOf("twist", StringComparison.OrdinalIgnoreCase) >= 0) {
-                        twistBone = child;
-                        continue;
-                    }
-                    CachePosition(child);
-                }
-                CacheAffectedComponents(transform);
-                var orgMatrix = transform.localToWorldMatrix;
-                var twistOrgMatrix = twistBone != null ? twistBone.localToWorldMatrix : Matrix4x4.identity;
-                transform.rotation = GetAdjustedRotation((int)bone, transform);
-                movedBones[transform] = transform.worldToLocalMatrix * orgMatrix;
-                if (twistBone != null) {
-                    CacheAffectedComponents(twistBone);
-                    twistBone.localRotation = Quaternion.identity;
-                    movedBones[twistBone] = twistBone.worldToLocalMatrix * twistOrgMatrix;
-                }
-                RestoreCachedPositions();
+            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+                Normalize(bone);
+        }
+
+        void NormalizeLeg() {
+            // Minimal normalization before fixing cross-legs
+            for (var bone = HumanBodyBones.LeftUpperLeg; bone <= HumanBodyBones.RightFoot; bone++)
+                Normalize(bone);
+        }
+
+        void Normalize(HumanBodyBones bone) {
+            var transform = bones[(int)bone];
+            if (transform == null) return;
+            bool canContainTwistBone = false;
+            switch (bone) {
+                case HumanBodyBones.LeftUpperLeg:
+                case HumanBodyBones.RightUpperLeg:
+                case HumanBodyBones.LeftLowerLeg:
+                case HumanBodyBones.RightLowerLeg:
+                case HumanBodyBones.LeftUpperArm:
+                case HumanBodyBones.RightUpperArm:
+                case HumanBodyBones.LeftLowerArm:
+                case HumanBodyBones.RightLowerArm:
+                    canContainTwistBone = true;
+                    break;
             }
+            Transform twistBone = null;
+            foreach (Transform child in transform) {
+                if (canContainTwistBone && child.name.IndexOf("twist", StringComparison.OrdinalIgnoreCase) >= 0) {
+                    twistBone = child;
+                    continue;
+                }
+                CachePosition(child);
+            }
+            CacheAffectedComponents(transform);
+            var orgMatrix = transform.localToWorldMatrix;
+            var twistOrgMatrix = twistBone != null ? twistBone.localToWorldMatrix : Matrix4x4.identity;
+            transform.rotation = GetAdjustedRotation((int)bone, transform);
+            movedBones[transform] = transform.worldToLocalMatrix * orgMatrix;
+            if (twistBone != null) {
+                CacheAffectedComponents(twistBone);
+                twistBone.localRotation = Quaternion.identity;
+                movedBones[twistBone] = twistBone.worldToLocalMatrix * twistOrgMatrix;
+            }
+            RestoreCachedPositions();
         }
 
         Quaternion GetAdjustedRotation(int bone, Transform transform) {

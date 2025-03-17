@@ -15,8 +15,10 @@ This is a tool that will rebakes the [humanoid avatar](https://docs.unity3d.com/
 - **Fix crosslegs** - Attempts to adjusts legs bone default (rest) pose, fixes the cross legs issue when crouching in VR.
 - **Auto calculate foot offset** - Useful for clothing that has different heels to the original avatar and stucking in floor when not adjusting it.
   What it will do is detects the skinned mesh that has vertices forming the sole under shoes, calculates the lowest point of them and pull the hips bone upward by this value.
+- **Fix hover feet** - It will also snaps the feet to the ground if it is hovering when enabled with auto calculate foot offset.
 - **Manual offset** - Allow to manually adjust the offset of the hip bone yourself.
-- **Override** - This is an advanced usage, you can specify other bones as part of humanoid, might be useful if you have renamed/recreated relavent bones etc.
+- **Human Description** - This is an advanced usage. You can adjusts values for use with Unity's built-in IK system.
+- **Override Bones** - This is also an advanced usage. You can specify other bones and its rotation limits here.
 
 > [!IMPORTANT]
 > As this tool will rebakes the humanoid avatar object, so any adjustments (include poses) to your avatar skeleton will be applied to it. It is important that your avatar must be in T-Pose before build.

@@ -79,6 +79,8 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
             if (desc.humanLimits == null)
                 desc.humanLimits = new OverrideHumanLimits[(int)HumanBodyBones.LastBone];
+            else if (desc.humanLimits.Length != (int)HumanBodyBones.LastBone)
+                Array.Resize(ref desc.humanLimits, (int)HumanBodyBones.LastBone);
             for (int i = 0; i < desc.humanLimits.Length; i++) {
                 ref var limit = ref desc.humanLimits[i];
                 if (limit.mode != OverrideMode.Inherit) continue;

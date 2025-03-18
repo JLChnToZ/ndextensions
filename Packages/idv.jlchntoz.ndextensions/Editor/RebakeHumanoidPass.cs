@@ -1,13 +1,15 @@
 using UnityEngine;
-using UnityEditor;
+using System.Collections.Generic;
 #if VRC_SDK_VRCSDK3
 using VRC.SDK3.Avatars.Components;
 #endif
 using nadena.dev.ndmf;
 using static UnityEngine.Object;
+using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
     class RebakeHumanoidPass : Pass<RebakeHumanoidPass> {
+        readonly Dictionary<UnityObject, UnityObject> cache = new();
         public override string DisplayName => "Rebake Humanoid";
 
         protected override void Execute(BuildContext ctx) {
@@ -43,22 +45,20 @@ namespace JLChnToZ.NDExtensions.Editors {
                 declaration.overrideHuman,
                 relocator
             );
-            foreach (var clip in relocator.GetAllCloneClips())
-                AssetDatabase.AddObjectToAsset(clip, ctx.AssetContainer);
-            foreach (var controller in relocator.GetAllOverrideControllers())
-                if (controller != null)
-                    AssetDatabase.AddObjectToAsset(controller, ctx.AssetContainer);
 #if VRC_SDK_VRCSDK3
             if (vrcaDesc != null) {
                 if (declaration.adjustViewpoint)
                     vrcaDesc.ViewPosition += MeasureEyePosition(declaration) - eyePosition;
-                AssignAnimationControllers(vrcaDesc.baseAnimationLayers, relocator);
-                AssignAnimationControllers(vrcaDesc.specialAnimationLayers, relocator);
+                if (declaration.fixBoneOrientation)
+                    FixEyeRotation(vrcaDesc, declaration);
+                AssignAnimationControllers(vrcaDesc.baseAnimationLayers, relocator, ctx.AssetContainer);
+                AssignAnimationControllers(vrcaDesc.specialAnimationLayers, relocator, ctx.AssetContainer);
             }
 #endif
-            animator.runtimeAnimatorController = relocator[animator.runtimeAnimatorController];
+            animator.runtimeAnimatorController = GetRelocatedController(animator.runtimeAnimatorController, relocator, ctx.AssetContainer);
             DestroyImmediate(declaration);
             transform.SetPositionAndRotation(orgPos, orgRot);
+            cache.Clear();
         }
 
         static Vector3 MeasureEyePosition(RebakeHumanoid declaration) {
@@ -73,6 +73,19 @@ namespace JLChnToZ.NDExtensions.Editors {
             return Vector3.zero;
         }
 
+        RuntimeAnimatorController GetRelocatedController(RuntimeAnimatorController src, AnimationRelocator relocator, UnityObject assetRoot) {
+            var controller = relocator[src];
+            if (controller != src && controller is AnimatorOverrideController overrideController) {
+                if (cache.TryGetValue(src, out var cachedController) && cachedController != null)
+                    return cachedController as RuntimeAnimatorController;
+                var baker = new AnimatorOverrideControllerBaker(overrideController);
+                controller = baker.Bake();
+                baker.SaveToAsset(assetRoot);
+                cache.Add(src, controller);
+            }
+            return controller;
+        }
+
 #if VRC_SDK_VRCSDK3
         static void GetAnimationControllers(VRCAvatarDescriptor.CustomAnimLayer[] layers, AnimationRelocator relocator) {
             if (layers == null) return;
@@ -80,11 +93,45 @@ namespace JLChnToZ.NDExtensions.Editors {
                 relocator.AddController(layers[i].animatorController);
         }
 
-        static void AssignAnimationControllers(VRCAvatarDescriptor.CustomAnimLayer[] layers, AnimationRelocator relocator) {
+        void AssignAnimationControllers(VRCAvatarDescriptor.CustomAnimLayer[] layers, AnimationRelocator relocator, UnityObject assetRoot) {
             if (layers == null) return;
             for (int i = 0, count = layers.Length; i < count; i++)
-                layers[i].animatorController = relocator[layers[i].animatorController];
+                layers[i].animatorController = GetRelocatedController(layers[i].animatorController, relocator, assetRoot);
         }
+        
+        static void FixEyeRotation(VRCAvatarDescriptor vrcaDesc, RebakeHumanoid declaration) {
+            ref var eyeSettings = ref vrcaDesc.customEyeLookSettings;
+            if (vrcaDesc.enableEyeLook) {
+                bool isLeftEye = eyeSettings.leftEye == declaration.GetBoneTransform(HumanBodyBones.LeftEye);
+                bool isRightEye = eyeSettings.rightEye == declaration.GetBoneTransform(HumanBodyBones.RightEye);
+                if (isLeftEye) {
+                    var cancel = Quaternion.Inverse(eyeSettings.eyesLookingStraight.left);
+                    eyeSettings.eyesLookingStraight.left = Quaternion.identity;
+                    eyeSettings.eyesLookingDown.left = cancel * eyeSettings.eyesLookingDown.left;
+                    eyeSettings.eyesLookingUp.left = cancel * eyeSettings.eyesLookingUp.left;
+                    eyeSettings.eyesLookingLeft.left = cancel * eyeSettings.eyesLookingLeft.left;
+                    eyeSettings.eyesLookingRight.left = cancel * eyeSettings.eyesLookingRight.left;
+                }
+                if (isRightEye) {
+                    var cancel = Quaternion.Inverse(eyeSettings.eyesLookingStraight.right);
+                    eyeSettings.eyesLookingStraight.right = Quaternion.identity;
+                    eyeSettings.eyesLookingDown.right = cancel * eyeSettings.eyesLookingDown.right;
+                    eyeSettings.eyesLookingUp.right = cancel * eyeSettings.eyesLookingUp.right;
+                    eyeSettings.eyesLookingLeft.right = cancel * eyeSettings.eyesLookingLeft.right;
+                    eyeSettings.eyesLookingRight.right = cancel * eyeSettings.eyesLookingRight.right;
+                }
+                if (isRightEye && isLeftEye) {
+                    eyeSettings.eyesLookingStraight.linked = true;
+                    DetectLookStraight(ref eyeSettings.eyesLookingDown);
+                    DetectLookStraight(ref eyeSettings.eyesLookingUp);
+                    DetectLookStraight(ref eyeSettings.eyesLookingLeft);
+                    DetectLookStraight(ref eyeSettings.eyesLookingRight);
+                }
+            }
+        }
+
+        static void DetectLookStraight(ref VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations eyeRotations) =>
+            eyeRotations.linked = eyeRotations.left == eyeRotations.right;
 #endif 
     }
 }

@@ -95,7 +95,10 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public override void OnInspectorGUI() {
             serializedObject.Update();
-            EditorGUILayout.HelpBox("Please make sure your avatar is in T-pose.\nAny adjustments to the humanoid rig such as feets offset will be applied to the avatar on build.", MessageType.Info);
+            EditorGUILayout.HelpBox(
+                "Please make sure your avatar is in T-pose.\nAny adjustments to the humanoid rig such as feets offset will be applied to the avatar on build.",
+                MessageType.Info
+            );
             #if VRC_SDK_VRCSDK3
             EditorGUILayout.Space();
             EditorGUILayout.PropertyField(adjustViewpointProp);
@@ -104,12 +107,18 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.PropertyField(manualOffsetProp);
             EditorGUILayout.PropertyField(autoCalculateFootOffsetProp);
             if (autoCalculateFootOffsetProp.boolValue)
-                using (new EditorGUI.IndentLevelScope())
+                using (new EditorGUI.IndentLevelScope()) {
                     EditorGUILayout.PropertyField(fixHoverFeetProp);
+                    if (fixHoverFeetProp.boolValue)
+                        EditorGUILayout.HelpBox(
+                            "This option can only try the best to ensure the avatar is standing on/above the ground in all scenarios, if you have seletable shoes with different offsets, your avatar will still hover in some cases.",
+                            MessageType.Info
+                        );
+                }
             EditorGUILayout.Space();
-            EditorGUILayout.HelpBox("These options are for attempting to fix issues caused by bad rigging.", MessageType.None);
             EditorGUILayout.PropertyField(fixBoneOrientationProp);
             EditorGUILayout.PropertyField(fixCrossLegsProp);
+            EditorGUILayout.HelpBox("These options are for attempting to fix issues caused by bad rigging.", MessageType.Info);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Advanced", EditorStyles.boldLabel);
             Avatar avatar = null;

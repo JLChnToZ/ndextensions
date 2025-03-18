@@ -32,9 +32,12 @@ namespace JLChnToZ.NDExtensions.Editors {
             bool normalize = false,
             bool fixCrossLeg = false,
             Transform[] bones = null,
-            OverrideHumanDescription? overrideHuman = null
+            OverrideHumanDescription? overrideHuman = null,
+            AnimationRelocator animationRelocator = null
         ) {
-            var processor = new HumanoidAvatarProcessor(animator, bones, assetRoot, overrideHuman);
+            var processor = new HumanoidAvatarProcessor(animator, bones, assetRoot, overrideHuman) {
+                animationRelocator = animationRelocator,
+            };
             processor.ScanAffectedComponents();
             if (normalize) processor.Normalize();
             else if (fixCrossLeg) processor.NormalizeLeg();
@@ -178,7 +181,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 };
             }
             if (animator != null) animator.avatar = null;
-            RestoreCachedPositions();
+            RestoreCachedPositions(false);
             var rebuiltAvatar = AvatarBuilder.BuildHumanAvatar(root.gameObject, desc);
             bool success = rebuiltAvatar.isValid;
             if (success) {

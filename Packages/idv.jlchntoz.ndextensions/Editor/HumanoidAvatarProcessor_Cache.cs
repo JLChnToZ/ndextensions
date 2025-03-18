@@ -3,6 +3,8 @@ using UnityEngine;
 using UnityEngine.Animations;
 using UnityEditor;
 using static UnityEngine.Object;
+using System;
+
 #if VRC_SDK_VRCSDK3
 using VRC.Dynamics;
 #endif
@@ -15,6 +17,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         readonly Dictionary<Transform, Matrix4x4> movedBones = new();
         readonly HashSet<string> boneNames = new();
         readonly Dictionary<Transform, string> cachedRanamedBones = new();
+        public AnimationRelocator animationRelocator;
 
         void ScanAffectedComponents() {
             var tempComponents = new List<Component>();
@@ -68,9 +71,9 @@ namespace JLChnToZ.NDExtensions.Editors {
                     CachePosition(component, refId: refId);
         }
 
-        void RestoreCachedPositions() {
+        void RestoreCachedPositions(bool restoreAnimation = true) {
             foreach (var c in cachedPositions)
-                c.Value.ApplyTo(c.Key.component, c.Key.refId);
+                c.Value.ApplyTo(c.Key.component, c.Key.refId, restoreAnimation ? animationRelocator : null);
             cachedPositions.Clear();
         }
 
@@ -79,10 +82,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             var boneName = bone.name;
             if (boneNames.Add(boneName)) return false;
             cachedRanamedBones[bone] = boneName;
-            var temp = new string[boneNames.Count];
-            boneNames.CopyTo(temp);
-            boneName = ObjectNames.GetUniqueName(temp, boneName);
-            boneNames.Add(boneName);
+            do {
+                boneName = Guid.NewGuid().ToString();
+            } while (!boneNames.Add(boneName));
             bone.name = boneName;
             return true;
         }

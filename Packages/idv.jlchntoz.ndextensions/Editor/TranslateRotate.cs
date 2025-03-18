@@ -89,9 +89,11 @@ namespace JLChnToZ.NDExtensions.Editors {
             this.isLocal = isLocal;
         }
 
-        public void ApplyTo(Component component, int refId = -1) {
+        public void ApplyTo(Component component, int refId = -1, AnimationRelocator relocator = null) {
             if (component is Transform transform) {
-                if (isLocal) {
+                if (relocator != null)
+                    relocator.SetTransformPositionAndRotation(transform, position, rotation, isLocal);
+                else if (isLocal) {
 #if UNITY_2021_3_OR_NEWER
                     transform.SetLocalPositionAndRotation(position, rotation);
 #else

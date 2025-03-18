@@ -1,4 +1,8 @@
 using UnityEngine;
+using UnityEditor;
+#if VRC_SDK_VRCSDK3
+using VRC.SDK3.Avatars.Components;
+#endif
 using nadena.dev.ndmf;
 using static UnityEngine.Object;
 
@@ -13,8 +17,14 @@ namespace JLChnToZ.NDExtensions.Editors {
             transform.GetPositionAndRotation(out var orgPos, out var orgRot);
             transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity); // Make sure the avatar is at origin
             var animator = declaration.Animator;
+            var relocator = new AnimationRelocator(transform);
+            relocator.AddController(animator.runtimeAnimatorController);
 #if VRC_SDK_VRCSDK3
             var eyePosition = declaration.adjustViewpoint ? MeasureEyePosition(declaration) : Vector3.zero;
+            if (declaration.TryGetComponent(out VRCAvatarDescriptor vrcaDesc)) {
+                GetAnimationControllers(vrcaDesc.baseAnimationLayers, relocator);
+                GetAnimationControllers(vrcaDesc.specialAnimationLayers, relocator);
+            }
 #endif
             var hips = declaration.GetBoneTransform(HumanBodyBones.Hips);
             if (hips != null) {
@@ -30,13 +40,23 @@ namespace JLChnToZ.NDExtensions.Editors {
                 declaration.fixBoneOrientation,
                 declaration.fixCrossLegs,
                 declaration.@override ? declaration.boneMapping : null,
-                declaration.overrideHuman
+                declaration.overrideHuman,
+                relocator
             );
+            foreach (var clip in relocator.GetAllCloneClips())
+                AssetDatabase.AddObjectToAsset(clip, ctx.AssetContainer);
+            foreach (var controller in relocator.GetAllOverrideControllers())
+                if (controller != null)
+                    AssetDatabase.AddObjectToAsset(controller, ctx.AssetContainer);
 #if VRC_SDK_VRCSDK3
-            if (declaration.adjustViewpoint &&
-                declaration.TryGetComponent(out VRC.SDK3.Avatars.Components.VRCAvatarDescriptor vrcaDesc))
-                vrcaDesc.ViewPosition += MeasureEyePosition(declaration) - eyePosition;
+            if (vrcaDesc != null) {
+                if (declaration.adjustViewpoint)
+                    vrcaDesc.ViewPosition += MeasureEyePosition(declaration) - eyePosition;
+                AssignAnimationControllers(vrcaDesc.baseAnimationLayers, relocator);
+                AssignAnimationControllers(vrcaDesc.specialAnimationLayers, relocator);
+            }
 #endif
+            animator.runtimeAnimatorController = relocator[animator.runtimeAnimatorController];
             DestroyImmediate(declaration);
             transform.SetPositionAndRotation(orgPos, orgRot);
         }
@@ -52,5 +72,19 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (head != null) return head.position;
             return Vector3.zero;
         }
+
+#if VRC_SDK_VRCSDK3
+        static void GetAnimationControllers(VRCAvatarDescriptor.CustomAnimLayer[] layers, AnimationRelocator relocator) {
+            if (layers == null) return;
+            for (int i = 0, count = layers.Length; i < count; i++)
+                relocator.AddController(layers[i].animatorController);
+        }
+
+        static void AssignAnimationControllers(VRCAvatarDescriptor.CustomAnimLayer[] layers, AnimationRelocator relocator) {
+            if (layers == null) return;
+            for (int i = 0, count = layers.Length; i < count; i++)
+                layers[i].animatorController = relocator[layers[i].animatorController];
+        }
+#endif 
     }
 }

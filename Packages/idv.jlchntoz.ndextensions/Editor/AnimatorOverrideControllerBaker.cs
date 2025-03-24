@@ -45,9 +45,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             pending.Push(controller);
             while (pending.TryPop(out var entry)) {
                 using var so = new SerializedObject(entry);
-                for (var iterator = so.GetIterator(); iterator.Next(true);) {
-                    if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
-                    var value = iterator.objectReferenceValue;
+                foreach (var sp in so.Enumerate(false)) {
+                    if (sp.propertyType != SerializedPropertyType.ObjectReference) continue;
+                    var value = sp.objectReferenceValue;
                     if (value == null || value is GameObject || value is Component) continue;
                     HashSet<UnityObject> parents;
                     if (cloneNeeded.Contains(value) || (value is AnimationClip clip && clipOverrides.ContainsKey(clip))) {
@@ -71,12 +71,12 @@ namespace JLChnToZ.NDExtensions.Editors {
             pending.Push(newController);
             while (pending.TryPop(out var entry)) {
                 using var so = new SerializedObject(entry);
-                for (var iterator = so.GetIterator(); iterator.Next(true);) {
-                    if (iterator.propertyType != SerializedPropertyType.ObjectReference) continue;
-                    var value = iterator.objectReferenceValue;
+                foreach (var sp in so.Enumerate(false)) {
+                    if (sp.propertyType != SerializedPropertyType.ObjectReference) continue;
+                    var value = sp.objectReferenceValue;
                     if (value == null) continue;
                     if (remap.TryGetValue(value, out var newValue)) {
-                        iterator.objectReferenceValue = newValue;
+                        sp.objectReferenceValue = newValue;
                         continue;
                     }
                     if (cloneNeeded.Contains(value)) {
@@ -85,7 +85,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                         newValue.hideFlags = value.hideFlags;
                         createdObjects.Add(newValue);
                         remap[value] = newValue;
-                        iterator.objectReferenceValue = newValue;
+                        sp.objectReferenceValue = newValue;
                         pending.Push(newValue);
                         continue;
                     }

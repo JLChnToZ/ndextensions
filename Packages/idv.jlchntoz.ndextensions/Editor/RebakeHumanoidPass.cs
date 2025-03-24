@@ -98,7 +98,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             for (int i = 0, count = layers.Length; i < count; i++)
                 layers[i].animatorController = GetRelocatedController(layers[i].animatorController, relocator, assetRoot);
         }
-        
+
         static void FixEyeRotation(VRCAvatarDescriptor vrcaDesc, RebakeHumanoid declaration) {
             ref var eyeSettings = ref vrcaDesc.customEyeLookSettings;
             if (vrcaDesc.enableEyeLook) {

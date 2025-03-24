@@ -1,3 +1,4 @@
+using System;
 using UnityEditor;
 using UnityEngine;
 
@@ -28,10 +29,11 @@ namespace JLChnToZ.NDExtensions.Editors {
         SerializedProperty feetSpacingProp;
         SerializedProperty hasTranslationDoFProp;
         SerializedProperty customLimitsProp;
-        #if VRC_SDK_VRCSDK3
+#if VRC_SDK_VRCSDK3
         SerializedProperty adjustViewpointProp;
-        #endif
+#endif
         Animator animator;
+        [NonSerialized] static Transform[] boneCache;
 
         void OnEnable() {
             fixBoneOrientationProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixBoneOrientation));
@@ -39,9 +41,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             autoCalculateFootOffsetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.autoCalculateFootOffset));
             fixHoverFeetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixHoverFeet));
             manualOffsetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.manualOffset));
-            #if VRC_SDK_VRCSDK3
+#if VRC_SDK_VRCSDK3
             adjustViewpointProp = serializedObject.FindProperty(nameof(RebakeHumanoid.adjustViewpoint));
-            #endif
+#endif
             overrideProp = serializedObject.FindProperty(nameof(RebakeHumanoid.@override));
             boneMappingProp = serializedObject.FindProperty(nameof(RebakeHumanoid.boneMapping));
             var overrideHumanProp = serializedObject.FindProperty(nameof(RebakeHumanoid.overrideHuman));
@@ -57,11 +59,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             customLimitsProp = overrideHumanProp.FindPropertyRelative(nameof(OverrideHumanDescription.humanLimits));
             if (humanBoneNames == null) humanBoneNames = HumanTrait.BoneName;
             if (muscleNames == null) muscleNames = HumanTrait.MuscleName;
-            if (boneNames == null) {
-                boneNames = new string[(int)HumanBodyBones.LastBone];
-                for (HumanBodyBones bone = 0; bone < HumanBodyBones.LastBone; bone++)
-                    boneNames[(int)bone] = ObjectNames.NicifyVariableName(bone.ToString());
-            }
+            if (boneNames == null) boneNames = Array.ConvertAll(humanBoneNames, ObjectNames.NicifyVariableName);
             if (muscleIndeces == null) {
                 muscleIndeces = new Vector3Int[HumanTrait.MuscleCount];
                 for (int i = 0; i < muscleIndeces.Length; i++)
@@ -71,6 +69,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                         HumanTrait.MuscleFromBone(i, 2)
                     );
             }
+            if (boneCache == null || boneCache.Length == 0) boneCache = new Transform[HumanTrait.BoneCount];
             if (defaultHumanLimits == null) {
                 defaultHumanLimits = new HumanLimit[HumanTrait.BoneCount];
                 for (int i = 0; i < defaultHumanLimits.Length; i++) {
@@ -99,10 +98,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                 "Please make sure your avatar is in T-pose.\nAny adjustments to the humanoid rig such as feets offset will be applied to the avatar on build.",
                 MessageType.Info
             );
-            #if VRC_SDK_VRCSDK3
+#if VRC_SDK_VRCSDK3
             EditorGUILayout.Space();
             EditorGUILayout.PropertyField(adjustViewpointProp);
-            #endif
+#endif
             EditorGUILayout.Space();
             EditorGUILayout.PropertyField(manualOffsetProp);
             EditorGUILayout.PropertyField(autoCalculateFootOffsetProp);
@@ -191,22 +190,39 @@ namespace JLChnToZ.NDExtensions.Editors {
                     var element = boneMappingProp.GetArrayElementAtIndex(bone);
                     var rect = EditorGUILayout.GetControlRect();
                     tempContent.text = boneNames[bone];
-                    using (var property = new EditorGUI.PropertyScope(rect, tempContent, element))
-                    using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
-                        var value = EditorGUI.ObjectField(rect, property.content, element.objectReferenceValue, typeof(Transform), true);
-                        if (value == null && HumanTrait.RequiredBone(bone)) {
-                            if (errorIconContent == null)
-                                errorIconContent = new GUIContent(EditorGUIUtility.IconContent("Error")) {
-                                    tooltip = "This bone is required for humanoid rig.",
-                                };
+                    using (var property = new EditorGUI.PropertyScope(rect, tempContent, element)) {
+                        using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
+                            boneCache[bone] = EditorGUI.ObjectField(rect, property.content, element.objectReferenceValue, typeof(Transform), true) as Transform;
+                            if (changeCheck.changed) element.objectReferenceValue = boneCache[bone];
+                        }
+                        string errorMessage = null;
+                        if (boneCache[bone] == null) {
+                            if (HumanTrait.RequiredBone(bone)) errorMessage = "This bone is required for humanoid rig.";
+                        } else if (bone > 0) {
+                            for (int bi = HumanTrait.GetParentBone(bone); bi >= 0; bi = HumanTrait.GetParentBone(bi)) {
+                                if (boneCache[bi] == null) continue;
+                                if (!boneCache[bone].IsChildOf(boneCache[bi]))
+                                    errorMessage = $"This bone must be a child of {boneNames[bi]} ({boneCache[bi].name}).";
+                                break;
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(errorMessage)) {
+                            if (errorIconContent == null) errorIconContent = new GUIContent(EditorGUIUtility.IconContent("Error"));
+                            errorIconContent.tooltip = errorMessage;
                             var errorRect = rect;
                             errorRect.width = errorRect.height;
-                            errorRect.x = rect.xMin + EditorGUIUtility.labelWidth - errorRect.width;
+                            errorRect.x = rect.xMin;
                             GUI.Label(errorRect, errorIconContent);
                         }
-                        if (changeCheck.changed) element.objectReferenceValue = value;
                     }
-                    if (muscleIndeces[bone] != emptyMuscleIndex)
+                    if (muscleIndeces[bone] == emptyMuscleIndex || boneCache[bone] == null) {
+                        if (overrideStateValue.intValue != (int)OverrideMode.Inherit) {
+                            overrideStateValue.intValue = (int)OverrideMode.Inherit;
+                            shouldSetDefaults = true;
+                        }
+                        using (new EditorGUI.DisabledScope(true))
+                            GUILayout.Toggle(false, customLimitsIconContent, EditorStyles.miniButton, GUILayout.Width(20));
+                    } else
                         using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
                             hasCustomLimit = overrideStateValue.intValue != (int)OverrideMode.Inherit;
                             hasCustomLimit = GUILayout.Toggle(hasCustomLimit, customLimitsIconContent, EditorStyles.miniButton, GUILayout.Width(20));
@@ -295,7 +311,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 feetSpacingProp.floatValue = 0.0F;
                 hasTranslationDoFProp.boolValue = false;
             } else {
-                var human = animator.avatar.humanDescription;
+                var human = avatar.humanDescription;
                 armStretchProp.floatValue = human.armStretch;
                 upperArmTwistProp.floatValue = human.upperArmTwist;
                 lowerArmTwistProp.floatValue = human.lowerArmTwist;

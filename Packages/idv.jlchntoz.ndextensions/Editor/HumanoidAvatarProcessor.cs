@@ -51,8 +51,13 @@ namespace JLChnToZ.NDExtensions.Editors {
         static OverrideHumanDescription ResolveOverrideHumanDescription(OverrideHumanDescription? overrideHuman, Avatar reference = null) {
             var desc = overrideHuman ?? new OverrideHumanDescription {
                 humanLimits = new OverrideHumanLimits[(int)HumanBodyBones.LastBone],
-                armStretch = 0.05F, upperArmTwist = 0.5F, lowerArmTwist = 0.5F,
-                legStretch = 0.05F, lowerLegTwist = 0.5F, upperLegTwist = 0.5F, feetSpacing = 0.0F,
+                armStretch = 0.05F,
+                upperArmTwist = 0.5F,
+                lowerArmTwist = 0.5F,
+                legStretch = 0.05F,
+                lowerLegTwist = 0.5F,
+                upperLegTwist = 0.5F,
+                feetSpacing = 0.0F,
                 hasTranslationDoF = false,
             };
             if (reference == null) return desc;

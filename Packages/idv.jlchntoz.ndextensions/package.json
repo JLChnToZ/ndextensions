@@ -1,7 +1,7 @@
 {
   "name": "idv.jlchntoz.ndextensions",
   "displayName": "Vistanz's Non Destructive Extensions",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "unity": "2022.1",
   "description": "Non Destructive Extensions For VRChat Avatars (built on top of NDMF)",
   "license": "MIT",

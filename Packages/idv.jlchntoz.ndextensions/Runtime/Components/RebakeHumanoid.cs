@@ -44,9 +44,10 @@ namespace JLChnToZ.NDExtensions {
             if (fixHoverFeet) {
                 floorAdjustment = FloorAdjustmentMode.FixHoveringFeet;
                 fixHoverFeet = false;
+                autoCalculateFootOffset = false;
             }
             if (autoCalculateFootOffset) {
-                floorAdjustment = FloorAdjustmentMode.BareFeetToGround;
+                floorAdjustment = FloorAdjustmentMode.FixSolesStuck;
                 autoCalculateFootOffset = false;
             }
 #pragma warning restore 0612

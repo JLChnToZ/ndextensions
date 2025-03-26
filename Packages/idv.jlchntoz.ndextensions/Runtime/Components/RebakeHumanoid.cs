@@ -12,6 +12,8 @@ namespace JLChnToZ.NDExtensions {
         public Vector3 manualOffset;
         [Obsolete, SerializeField, HideInInspector] bool autoCalculateFootOffset, fixHoverFeet;
         public FloorAdjustmentMode floorAdjustment;
+        [Tooltip("The skinned mesh renderer that contains the bare feet, this is for measuring the offset.")]
+        public SkinnedMeshRenderer rendererWithBareFeet;
         [Tooltip("Rotates the armature bones potentially fixes compatibility to mecanim systems such as IK, gestures, etc. cause by bad rigging.")]
         public bool fixBoneOrientation;
         [Tooltip("Attempt sightly adjusts leg bones rest pose to fix cross-legs issue cause by bad rigging.")]

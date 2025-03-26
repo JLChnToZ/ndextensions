@@ -12,15 +12,17 @@ namespace JLChnToZ.NDExtensions.Editors {
         readonly HashSet<Transform> boneOfInterest = new();
         float minOffset = float.PositiveInfinity;
 
-        public static float FindOffset(IBoneTransformProvider provider, GameObject root) {
+        public static float FindOffset(IBoneTransformProvider provider, GameObject root, SkinnedMeshRenderer[] skins = null) {
             var resolver = new SoleResolver(provider);
             resolver.AddBoneOfInterest(HumanBodyBones.LeftToes);
             resolver.AddBoneOfInterest(HumanBodyBones.RightToes);
             resolver.AddBoneOfInterest(HumanBodyBones.LeftFoot);
             resolver.AddBoneOfInterest(HumanBodyBones.RightFoot);
-            if (resolver.boneOfInterest.Count > 0)
-                foreach (var renderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            if (resolver.boneOfInterest.Count > 0) {
+                if (skins == null) skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                foreach (var renderer in skins)
                     resolver.AddRendererOfInterest(renderer);
+            }
             return resolver.minOffset;
         }
 

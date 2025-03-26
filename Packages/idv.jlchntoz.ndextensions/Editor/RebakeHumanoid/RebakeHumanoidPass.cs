@@ -1,31 +1,25 @@
 using UnityEngine;
-using System.Collections.Generic;
 #if VRC_SDK_VRCSDK3
 using VRC.SDK3.Avatars.Components;
 #endif
 using nadena.dev.ndmf;
 using static UnityEngine.Object;
-using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
     class RebakeHumanoidPass : Pass<RebakeHumanoidPass> {
-        readonly Dictionary<UnityObject, UnityObject> cache = new();
         public override string DisplayName => "Rebake Humanoid";
 
         protected override void Execute(BuildContext ctx) {
             if (!ctx.AvatarRootObject.TryGetComponent(out RebakeHumanoid declaration)) return;
             if (!declaration.@override) declaration.RefetchBones(); // Force refetch bones
-            var transform = ctx.AvatarRootObject.transform;
-            transform.GetPositionAndRotation(out var orgPos, out var orgRot);
-            transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity); // Make sure the avatar is at origin
+            var extCtx = ctx.Extension<RebakeHumanoidContext>();
             var animator = declaration.Animator;
-            var relocator = new AnimationRelocator(transform);
-            relocator.AddController(animator.runtimeAnimatorController);
+            extCtx.GetAnimationController(animator.runtimeAnimatorController);
 #if VRC_SDK_VRCSDK3
             var eyePosition = declaration.adjustViewpoint ? MeasureEyePosition(declaration) : Vector3.zero;
             if (declaration.TryGetComponent(out VRCAvatarDescriptor vrcaDesc)) {
-                GetAnimationControllers(vrcaDesc.baseAnimationLayers, relocator);
-                GetAnimationControllers(vrcaDesc.specialAnimationLayers, relocator);
+                extCtx.GetAnimationControllers(vrcaDesc.baseAnimationLayers);
+                extCtx.GetAnimationControllers(vrcaDesc.specialAnimationLayers);
             }
 #endif
             var hips = declaration.GetBoneTransform(HumanBodyBones.Hips);
@@ -33,20 +27,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 float yOffset = 0;
                 switch (declaration.floorAdjustment) {
                     case FloorAdjustmentMode.BareFeetToGround:
-                        var leftFoot = declaration.GetBoneTransform(HumanBodyBones.LeftToes);
-                        var rightFoot = declaration.GetBoneTransform(HumanBodyBones.RightToes);
-                        if (leftFoot == null || rightFoot == null) {
-                            leftFoot = declaration.GetBoneTransform(HumanBodyBones.LeftFoot);
-                            rightFoot = declaration.GetBoneTransform(HumanBodyBones.RightFoot);
-                        }
-                        yOffset = 0F;
-                        if (leftFoot != null) {
-                            if (rightFoot != null)
-                                yOffset = Mathf.Min(leftFoot.position.y, rightFoot.position.y);
-                            else
-                                yOffset = leftFoot.position.y;
-                        } else
-                            if (rightFoot != null) yOffset = rightFoot.position.y;
+                        yOffset = extCtx.BareFeetOffset;
                         break;
                     case FloorAdjustmentMode.FixSolesStuck:
                     case FloorAdjustmentMode.FixHoveringFeet:
@@ -64,7 +45,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 declaration.fixCrossLegs,
                 declaration.@override ? declaration.boneMapping : null,
                 declaration.overrideHuman,
-                relocator
+                extCtx.Relocator
             );
 #if VRC_SDK_VRCSDK3
             if (vrcaDesc != null) {
@@ -72,14 +53,12 @@ namespace JLChnToZ.NDExtensions.Editors {
                     vrcaDesc.ViewPosition += MeasureEyePosition(declaration) - eyePosition;
                 if (declaration.fixBoneOrientation)
                     FixEyeRotation(vrcaDesc, declaration);
-                AssignAnimationControllers(vrcaDesc.baseAnimationLayers, relocator, ctx.AssetContainer);
-                AssignAnimationControllers(vrcaDesc.specialAnimationLayers, relocator, ctx.AssetContainer);
+                extCtx.AssignAnimationControllers(vrcaDesc.baseAnimationLayers);
+                extCtx.AssignAnimationControllers(vrcaDesc.specialAnimationLayers);
             }
 #endif
-            animator.runtimeAnimatorController = GetRelocatedController(animator.runtimeAnimatorController, relocator, ctx.AssetContainer);
+            animator.runtimeAnimatorController = extCtx.GetRelocatedController(animator.runtimeAnimatorController);
             DestroyImmediate(declaration);
-            transform.SetPositionAndRotation(orgPos, orgRot);
-            cache.Clear();
         }
 
         static Vector3 MeasureEyePosition(RebakeHumanoid declaration) {
@@ -94,32 +73,8 @@ namespace JLChnToZ.NDExtensions.Editors {
             return Vector3.zero;
         }
 
-        RuntimeAnimatorController GetRelocatedController(RuntimeAnimatorController src, AnimationRelocator relocator, UnityObject assetRoot) {
-            var controller = relocator[src];
-            if (controller != src && controller is AnimatorOverrideController overrideController) {
-                if (cache.TryGetValue(src, out var cachedController) && cachedController != null)
-                    return cachedController as RuntimeAnimatorController;
-                var baker = new AnimatorOverrideControllerBaker(overrideController);
-                controller = baker.Bake();
-                baker.SaveToAsset(assetRoot);
-                cache.Add(src, controller);
-            }
-            return controller;
-        }
 
 #if VRC_SDK_VRCSDK3
-        static void GetAnimationControllers(VRCAvatarDescriptor.CustomAnimLayer[] layers, AnimationRelocator relocator) {
-            if (layers == null) return;
-            for (int i = 0, count = layers.Length; i < count; i++)
-                relocator.AddController(layers[i].animatorController);
-        }
-
-        void AssignAnimationControllers(VRCAvatarDescriptor.CustomAnimLayer[] layers, AnimationRelocator relocator, UnityObject assetRoot) {
-            if (layers == null) return;
-            for (int i = 0, count = layers.Length; i < count; i++)
-                layers[i].animatorController = GetRelocatedController(layers[i].animatorController, relocator, assetRoot);
-        }
-
         static void FixEyeRotation(VRCAvatarDescriptor vrcaDesc, RebakeHumanoid declaration) {
             ref var eyeSettings = ref vrcaDesc.customEyeLookSettings;
             if (vrcaDesc.enableEyeLook) {

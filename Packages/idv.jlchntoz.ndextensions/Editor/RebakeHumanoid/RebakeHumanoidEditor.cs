@@ -14,6 +14,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         SerializedProperty fixBoneOrientationProp;
         SerializedProperty fixCrossLegsProp;
         SerializedProperty floorAdjustmentProp;
+        SerializedProperty rendererWithBareFeetProp;
         SerializedProperty manualOffsetProp;
         SerializedProperty overrideProp;
         SerializedProperty boneMappingProp;
@@ -37,6 +38,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             fixBoneOrientationProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixBoneOrientation));
             fixCrossLegsProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixCrossLegs));
             floorAdjustmentProp = serializedObject.FindProperty(nameof(RebakeHumanoid.floorAdjustment));
+            rendererWithBareFeetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.rendererWithBareFeet));
             manualOffsetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.manualOffset));
 #if VRC_SDK_VRCSDK3
             adjustViewpointProp = serializedObject.FindProperty(nameof(RebakeHumanoid.adjustViewpoint));
@@ -103,9 +105,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                     MessageType.Info
                 );
 #endif
-            EditorGUILayout.PropertyField(manualOffsetProp);
             EditorGUILayout.PropertyField(floorAdjustmentProp);
             var floorAdjustmentMode = (FloorAdjustmentMode)floorAdjustmentProp.intValue;
+            if (floorAdjustmentMode == FloorAdjustmentMode.BareFeetToGround)
+                using (new EditorGUI.IndentLevelScope())
+                    EditorGUILayout.PropertyField(rendererWithBareFeetProp);
 #if VRC_SDK_VRCSDK3
             if (!adjustViewpointProp.boolValue && (floorAdjustmentMode > FloorAdjustmentMode.BareFeetToGround || manualOffsetProp.vector3Value.y != 0))
                 EditorGUILayout.HelpBox(
@@ -118,6 +122,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                     "\"Fix Hover Feet\" can only try the best to ensure the avatar is standing on/above the ground in all scenarios.\nIf you have seletable shoes with different offsets, your avatar will still hover in some cases.",
                     MessageType.Info
                 );
+            EditorGUILayout.PropertyField(manualOffsetProp);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Bad Rigging Ad-Hoc Fixes", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(fixBoneOrientationProp);

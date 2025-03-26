@@ -13,7 +13,8 @@ This is a tool that will rebakes the [humanoid avatar](https://docs.unity3d.com/
 - **Adjust viewpoint** - Adjust the view point in VRChat avatar descriptor after rebaking the humanoid avatar object.
 - **Floor adjustment** - Contains several modes to adjust height.
   - **Disabled** - Does nothing
-  - **Bare feet snap to ground** - Recommended by FBT users who want precise IK measurements, which make sures feet bone is on the ground.
+  - **Bare feet snap to ground** - Recommended by FBT users who want precise IK measurements, which make sures bare feet is on the ground.
+    - **Renderer With Bare Feet** - Will use the mesh assigned here to measure the bare feet offset, will instead use the feet bone if empty.
   - **Ensure soles on ground** - This will pull your avatar upward and make sures your shoes will not stucked into the ground. Will affects IK measurements which make your hands looks shorter in your perspective when using "avatar height" as measurement.
   - **Ensure soles on ground and avoid hovering** - Almost same as above, but it will also try the best to avoid hovering feet issues.
 - **Fix bone orientation** - Attempts to normalizes (fixes) bones orientation, potentially fixes bugged/broken mecanim animations/IKs.
@@ -30,7 +31,7 @@ This is a tool that will rebakes the [humanoid avatar](https://docs.unity3d.com/
 > Beware height adjustment will changes the IK measurements of your avatar. If you choose to enable IK 2.0 and measure with "**avatar height**", the arms will appear shorter in your perspective.
 > Suggestion for users who need precise IK with FBT (dancers, for example), you may either:
 > 1. Shouldn't use this tool to auto detect or adjust (pull up) feet height.
-> 2. If you uses it anyway, you may want to switch to traditional "**arm span**" as measurement.
+> 2. If you uses it anyway, you may want to switch to traditional "**arm span**" as measurement.  
 > [Details on IK 2.0](https://docs.vrchat.com/docs/ik-20-features-and-options)
 
 > [!IMPORTANT]

@@ -11,10 +11,13 @@ This is a set of non-destructive tools built on top of [NDMF](https://ndmf.naden
 This is a tool that will rebakes the [humanoid avatar](https://docs.unity3d.com/2022.3/Documentation/Manual/AvatarCreationandSetup.html) object, it has following features:
 
 - **Adjust viewpoint** - Adjust the view point in VRChat avatar descriptor after rebaking the humanoid avatar object.
+- **Floor adjustment** - Contains several modes to adjust height.
+  - **Disabled** - Does nothing
+  - **Bare feet snap to ground** - Recommended by FBT users who want precise IK measurements, which make sures feet bone is on the ground.
+  - **Ensure soles on ground** - This will pull your avatar upward and make sures your shoes will not stucked into the ground. Will affects IK measurements which make your hands looks shorter in your perspective when using "avatar height" as measurement.
+  - **Ensure soles on ground and avoid hovering** - Almost same as above, but it will also try the best to avoid hovering feet issues.
 - **Fix bone orientation** - Attempts to normalizes (fixes) bones orientation, potentially fixes bugged/broken mecanim animations/IKs.
 - **Fix crosslegs** - Attempts to adjusts legs bone default (rest) pose, fixes the cross legs issue when crouching in VR.
-- **Auto calculate foot offset** - Useful for clothing that has different heels to the original avatar and stucking in floor when not adjusting it.
-  What it will do is detects the skinned mesh that has vertices forming the sole under shoes, calculates the lowest point of them and pull the hips bone upward by this value.
 - **Fix hover feet** - It will also snaps the feet to the ground if it is hovering when enabled with auto calculate foot offset.
 - **Manual offset** - Allow to manually adjust the offset of the hip bone yourself.
 - **Human Description** - This is an advanced usage. You can adjusts values for use with Unity's built-in IK system.
@@ -22,6 +25,13 @@ This is a tool that will rebakes the [humanoid avatar](https://docs.unity3d.com/
 
 > [!IMPORTANT]
 > As this tool will rebakes the humanoid avatar object, so any adjustments (include poses) to your avatar skeleton will be applied to it. It is important that your avatar must be in T-Pose before build.
+
+> [!IMPORTANT]
+> Beware height adjustment will changes the IK measurements of your avatar. If you choose to enable IK 2.0 and measure with "**avatar height**", the arms will appear shorter in your perspective.
+> Suggestion for users who need precise IK with FBT (dancers, for example), you may either:
+> 1. Shouldn't use this tool to auto detect or adjust (pull up) feet height.
+> 2. If you uses it anyway, you may want to switch to traditional "**arm span**" as measurement.
+> [Details on IK 2.0](https://docs.vrchat.com/docs/ik-20-features-and-options)
 
 > [!IMPORTANT]
 > Disclaimer: these "fix" features are not perfect, please double check if it works for you. Uncheck the toggle and do not use if it breaks your other gimmicks.

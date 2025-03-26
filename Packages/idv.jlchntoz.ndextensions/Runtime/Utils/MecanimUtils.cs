@@ -6,9 +6,33 @@ using UnityEngine;
 namespace JLChnToZ.NDExtensions {
     public static class MecanimUtils {
         delegate Dictionary<int, Transform> MapBones(Transform root, Dictionary<Transform, bool> validBones);
-        static readonly MapBones mapBones;
+        static string[] humanNames, muscleNames;
+        static MapBones mapBones;
+        public static string[] HumanBoneNames => humanNames;
 
-        static MecanimUtils() {
+        public static string[] MuscleNames => muscleNames;
+
+        public static readonly HumanDescription defaultHumanDescription = new() {
+            human = Array.Empty<HumanBone>(),
+            skeleton = Array.Empty<SkeletonBone>(),
+            armStretch = 0.05F,
+            upperArmTwist = 0.5F,
+            lowerArmTwist = 0.5F,
+            legStretch = 0.05F,
+            lowerLegTwist = 0.5F,
+            upperLegTwist = 0.5F,
+            feetSpacing = 0.0F,
+            hasTranslationDoF = false,
+        };
+
+#if UNITY_EDITOR
+        [UnityEditor.InitializeOnLoadMethod]
+#else
+        [RuntimeInitializeOnLoadMethod]
+#endif
+        static void Init() {
+            humanNames = HumanTrait.BoneName;
+            muscleNames = HumanTrait.MuscleName;
             var type = Type.GetType("UnityEditor.AvatarAutoMapper, UnityEditor", false);
             if (type != null) {
                 var delegateType = typeof(MapBones);
@@ -71,7 +95,6 @@ namespace JLChnToZ.NDExtensions {
             if (avatar == null || root == null) return false;
             var desc = avatar.humanDescription;
             if (desc.human == null && desc.human.Length == 0) return false;
-            var humanNames = HumanTrait.BoneName;
             var boneNames = new string[humanNames.Length];
             foreach (var bone in desc.human) {
                 if (string.IsNullOrEmpty(bone.humanName) || string.IsNullOrEmpty(bone.boneName)) continue;
@@ -113,5 +136,8 @@ namespace JLChnToZ.NDExtensions {
             FetchHumanoidBodyBones(avatar, root, result, new());
             return result;
         }
+
+        public static HumanDescription GetHumanDescriptionOrDefault(this Avatar avatar) =>
+            avatar == null ? defaultHumanDescription : avatar.humanDescription;
     }
 }

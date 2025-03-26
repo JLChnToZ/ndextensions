@@ -30,11 +30,32 @@ namespace JLChnToZ.NDExtensions.Editors {
 #endif
             var hips = declaration.GetBoneTransform(HumanBodyBones.Hips);
             if (hips != null) {
-                if (declaration.autoCalculateFootOffset) {
-                    var offset = SoleResolver.FindOffset(declaration, ctx.AvatarRootObject);
-                    if (declaration.fixHoverFeet || offset < 0) hips.position += new Vector3(0, -offset, 0);
+                float yOffset = 0;
+                switch (declaration.floorAdjustment) {
+                    case FloorAdjustmentMode.BareFeetToGround:
+                        var leftFoot = declaration.GetBoneTransform(HumanBodyBones.LeftToes);
+                        var rightFoot = declaration.GetBoneTransform(HumanBodyBones.RightToes);
+                        if (leftFoot == null || rightFoot == null) {
+                            leftFoot = declaration.GetBoneTransform(HumanBodyBones.LeftFoot);
+                            rightFoot = declaration.GetBoneTransform(HumanBodyBones.RightFoot);
+                        }
+                        yOffset = 0F;
+                        if (leftFoot != null) {
+                            if (rightFoot != null)
+                                yOffset = Mathf.Min(leftFoot.position.y, rightFoot.position.y);
+                            else
+                                yOffset = leftFoot.position.y;
+                        } else
+                            if (rightFoot != null) yOffset = rightFoot.position.y;
+                        break;
+                    case FloorAdjustmentMode.FixSolesStuck:
+                    case FloorAdjustmentMode.FixHoveringFeet:
+                        yOffset = SoleResolver.FindOffset(declaration, ctx.AvatarRootObject);
+                        if (declaration.floorAdjustment == FloorAdjustmentMode.FixSolesStuck && yOffset >= 0)
+                            yOffset = 0;
+                        break;
                 }
-                hips.position += declaration.manualOffset;
+                hips.position += declaration.manualOffset - new Vector3(0, yOffset, 0);
             }
             HumanoidAvatarProcessor.Process(
                 animator,

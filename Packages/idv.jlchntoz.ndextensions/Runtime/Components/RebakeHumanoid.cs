@@ -4,15 +4,14 @@ using UnityEngine.Serialization;
 
 namespace JLChnToZ.NDExtensions {
     [AddComponentMenu("JLChnToZ/Non-Destructive Extensions/Rebake Humanoid Avatar")]
+    [HelpURL("https://github.com/JLChnToZ/ndextensions/?tab=readme-ov-file#humanoid-avatar-rebaker")]
     [RequireComponent(typeof(Animator))]
     [DisallowMultipleComponent]
     public sealed partial class RebakeHumanoid : MonoBehaviour, IBoneTransformProvider {
         [Tooltip("Manually adjust the avatar's offset.")]
         public Vector3 manualOffset;
-        [Tooltip("Automatically calculates the avatar's foot offset by detecting the sole of the model (slow).")]
-        public bool autoCalculateFootOffset;
-        [Tooltip("Also snaps feet to the ground if it is hovering.")]
-        public bool fixHoverFeet;
+        [Obsolete, SerializeField, HideInInspector] bool autoCalculateFootOffset, fixHoverFeet;
+        public FloorAdjustmentMode floorAdjustment;
         [Tooltip("Rotates the armature bones potentially fixes compatibility to mecanim systems such as IK, gestures, etc. cause by bad rigging.")]
         public bool fixBoneOrientation;
         [Tooltip("Attempt sightly adjusts leg bones rest pose to fix cross-legs issue cause by bad rigging.")]
@@ -39,6 +38,30 @@ namespace JLChnToZ.NDExtensions {
             if (fetchedBones == null || fetchedBones.Length == 0) RefetchBones();
             return fetchedBones[(int)bone];
         }
+
+        void OnValidete() {
+#pragma warning disable 0612
+            if (fixHoverFeet) {
+                floorAdjustment = FloorAdjustmentMode.FixHoveringFeet;
+                fixHoverFeet = false;
+            }
+            if (autoCalculateFootOffset) {
+                floorAdjustment = FloorAdjustmentMode.BareFeetToGround;
+                autoCalculateFootOffset = false;
+            }
+#pragma warning restore 0612
+        }
+    }
+
+    public enum FloorAdjustmentMode {
+        [InspectorName("Disabled")]
+        NoChange,
+        [InspectorName("Bare feet snap to ground (FBT recommendation)")]
+        BareFeetToGround,
+        [InspectorName("Ensure soles on ground")]
+        FixSolesStuck,
+        [InspectorName("Ensure soles on ground and avoid hovering")]
+        FixHoveringFeet,
     }
 
 #if VRC_SDK_VRCSDK3

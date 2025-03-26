@@ -8,14 +8,12 @@ namespace JLChnToZ.NDExtensions.Editors {
         static readonly GUIContent tempContent = new();
         static readonly Vector3Int emptyMuscleIndex = new(-1, -1, -1);
         static GUIContent errorIconContent, customLimitsIconContent;
-        static string[] humanBoneNames, muscleNames;
         static Vector3Int[] muscleIndeces;
         static HumanLimit[] defaultHumanLimits;
         static string[] boneNames;
         SerializedProperty fixBoneOrientationProp;
         SerializedProperty fixCrossLegsProp;
-        SerializedProperty autoCalculateFootOffsetProp;
-        SerializedProperty fixHoverFeetProp;
+        SerializedProperty floorAdjustmentProp;
         SerializedProperty manualOffsetProp;
         SerializedProperty overrideProp;
         SerializedProperty boneMappingProp;
@@ -38,8 +36,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         void OnEnable() {
             fixBoneOrientationProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixBoneOrientation));
             fixCrossLegsProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixCrossLegs));
-            autoCalculateFootOffsetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.autoCalculateFootOffset));
-            fixHoverFeetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixHoverFeet));
+            floorAdjustmentProp = serializedObject.FindProperty(nameof(RebakeHumanoid.floorAdjustment));
             manualOffsetProp = serializedObject.FindProperty(nameof(RebakeHumanoid.manualOffset));
 #if VRC_SDK_VRCSDK3
             adjustViewpointProp = serializedObject.FindProperty(nameof(RebakeHumanoid.adjustViewpoint));
@@ -57,9 +54,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             feetSpacingProp = overrideHumanProp.FindPropertyRelative(nameof(OverrideHumanDescription.feetSpacing));
             hasTranslationDoFProp = overrideHumanProp.FindPropertyRelative(nameof(OverrideHumanDescription.hasTranslationDoF));
             customLimitsProp = overrideHumanProp.FindPropertyRelative(nameof(OverrideHumanDescription.humanLimits));
-            if (humanBoneNames == null) humanBoneNames = HumanTrait.BoneName;
-            if (muscleNames == null) muscleNames = HumanTrait.MuscleName;
-            if (boneNames == null) boneNames = Array.ConvertAll(humanBoneNames, ObjectNames.NicifyVariableName);
+            if (boneNames == null) boneNames = Array.ConvertAll(MecanimUtils.HumanBoneNames, ObjectNames.NicifyVariableName);
             if (muscleIndeces == null) {
                 muscleIndeces = new Vector3Int[HumanTrait.MuscleCount];
                 for (int i = 0; i < muscleIndeces.Length; i++)
@@ -95,29 +90,38 @@ namespace JLChnToZ.NDExtensions.Editors {
         public override void OnInspectorGUI() {
             serializedObject.Update();
             EditorGUILayout.HelpBox(
-                "Please make sure your avatar is in T-pose.\nAny adjustments to the humanoid rig such as feets offset will be applied to the avatar on build.",
+                "Please make sure your avatar is in T-pose.\nAny adjustments to the human bones in edit mode will be apply (bake) to the avatar on build.",
                 MessageType.Info
             );
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Height Adjustments", EditorStyles.boldLabel);
 #if VRC_SDK_VRCSDK3
-            EditorGUILayout.Space();
             EditorGUILayout.PropertyField(adjustViewpointProp);
+            if (adjustViewpointProp.boolValue)
+                EditorGUILayout.HelpBox(
+                    "Eye level adjustment will change the IK measurements of your avatar.\nYou may want to use \"arm span\" measurement mode in VRChat when wearing this avatar to avoid arms shorten issue.",
+                    MessageType.Info
+                );
 #endif
-            EditorGUILayout.Space();
             EditorGUILayout.PropertyField(manualOffsetProp);
-            EditorGUILayout.PropertyField(autoCalculateFootOffsetProp);
-            if (autoCalculateFootOffsetProp.boolValue)
-                using (new EditorGUI.IndentLevelScope()) {
-                    EditorGUILayout.PropertyField(fixHoverFeetProp);
-                    if (fixHoverFeetProp.boolValue)
-                        EditorGUILayout.HelpBox(
-                            "This option can only try the best to ensure the avatar is standing on/above the ground in all scenarios, if you have seletable shoes with different offsets, your avatar will still hover in some cases.",
-                            MessageType.Info
-                        );
-                }
+            EditorGUILayout.PropertyField(floorAdjustmentProp);
+            var floorAdjustmentMode = (FloorAdjustmentMode)floorAdjustmentProp.intValue;
+#if VRC_SDK_VRCSDK3
+            if (!adjustViewpointProp.boolValue && (floorAdjustmentMode > FloorAdjustmentMode.BareFeetToGround || manualOffsetProp.vector3Value.y != 0))
+                EditorGUILayout.HelpBox(
+                    "You may need to enable \"Auto Adjust Viewpoint\" to match the avatar's eye level.",
+                    MessageType.Info
+                );
+#endif
+            if (floorAdjustmentMode == FloorAdjustmentMode.FixHoveringFeet)
+                EditorGUILayout.HelpBox(
+                    "\"Fix Hover Feet\" can only try the best to ensure the avatar is standing on/above the ground in all scenarios.\nIf you have seletable shoes with different offsets, your avatar will still hover in some cases.",
+                    MessageType.Info
+                );
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Bad Rigging Ad-Hoc Fixes", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(fixBoneOrientationProp);
             EditorGUILayout.PropertyField(fixCrossLegsProp);
-            EditorGUILayout.HelpBox("These options are for attempting to fix issues caused by bad rigging.", MessageType.Info);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Advanced", EditorStyles.boldLabel);
             Avatar avatar = null;
@@ -259,6 +263,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 maxProp.vector3Value = defaultHumanLimit.max;
                 centerProp.vector3Value = Vector3.zero;
             }
+            var muscleNames = MecanimUtils.MuscleNames;
             using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
                 var minValues = minProp.vector3Value;
                 var maxValues = maxProp.vector3Value;
@@ -301,26 +306,15 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void FetchHumanProperties(Avatar avatar) {
-            if (avatar == null) {
-                armStretchProp.floatValue = 0.05F;
-                upperArmTwistProp.floatValue = 0.5F;
-                lowerArmTwistProp.floatValue = 0.5F;
-                legStretchProp.floatValue = 0.05F;
-                lowerLegTwistProp.floatValue = 0.5F;
-                upperLegTwistProp.floatValue = 0.5F;
-                feetSpacingProp.floatValue = 0.0F;
-                hasTranslationDoFProp.boolValue = false;
-            } else {
-                var human = avatar.humanDescription;
-                armStretchProp.floatValue = human.armStretch;
-                upperArmTwistProp.floatValue = human.upperArmTwist;
-                lowerArmTwistProp.floatValue = human.lowerArmTwist;
-                legStretchProp.floatValue = human.legStretch;
-                lowerLegTwistProp.floatValue = human.lowerLegTwist;
-                upperLegTwistProp.floatValue = human.upperLegTwist;
-                feetSpacingProp.floatValue = human.feetSpacing;
-                hasTranslationDoFProp.boolValue = human.hasTranslationDoF;
-            }
+            var human = avatar.GetHumanDescriptionOrDefault();
+            armStretchProp.floatValue = human.armStretch;
+            upperArmTwistProp.floatValue = human.upperArmTwist;
+            lowerArmTwistProp.floatValue = human.lowerArmTwist;
+            legStretchProp.floatValue = human.legStretch;
+            lowerLegTwistProp.floatValue = human.lowerLegTwist;
+            upperLegTwistProp.floatValue = human.upperLegTwist;
+            feetSpacingProp.floatValue = human.feetSpacing;
+            hasTranslationDoFProp.boolValue = human.hasTranslationDoF;
         }
     }
 }

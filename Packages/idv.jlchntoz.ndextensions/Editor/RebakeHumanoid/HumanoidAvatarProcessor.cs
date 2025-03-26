@@ -48,70 +48,6 @@ namespace JLChnToZ.NDExtensions.Editors {
             return processor.RegenerateAvatar();
         }
 
-        static OverrideHumanDescription ResolveOverrideHumanDescription(OverrideHumanDescription? overrideHuman, Avatar reference = null) {
-            var desc = overrideHuman ?? new OverrideHumanDescription {
-                humanLimits = new OverrideHumanLimits[(int)HumanBodyBones.LastBone],
-                armStretch = 0.05F,
-                upperArmTwist = 0.5F,
-                lowerArmTwist = 0.5F,
-                legStretch = 0.05F,
-                lowerLegTwist = 0.5F,
-                upperLegTwist = 0.5F,
-                feetSpacing = 0.0F,
-                hasTranslationDoF = false,
-            };
-            if (reference == null) return desc;
-            var srcDesc = reference.humanDescription;
-            switch (desc.mode) {
-                case OverrideMode.Inherit:
-                    desc.armStretch = srcDesc.armStretch;
-                    desc.upperArmTwist = srcDesc.upperArmTwist;
-                    desc.lowerArmTwist = srcDesc.lowerArmTwist;
-                    desc.legStretch = srcDesc.legStretch;
-                    desc.lowerLegTwist = srcDesc.lowerLegTwist;
-                    desc.upperLegTwist = srcDesc.upperLegTwist;
-                    desc.feetSpacing = srcDesc.feetSpacing;
-                    desc.hasTranslationDoF = srcDesc.hasTranslationDoF;
-                    break;
-                case OverrideMode.Default:
-                    desc.armStretch = 0.05F;
-                    desc.upperArmTwist = 0.5F;
-                    desc.lowerArmTwist = 0.5F;
-                    desc.legStretch = 0.05F;
-                    desc.lowerLegTwist = 0.5F;
-                    desc.upperLegTwist = 0.5F;
-                    desc.feetSpacing = 0.0F;
-                    desc.hasTranslationDoF = false;
-                    break;
-            }
-            if (desc.humanLimits == null)
-                desc.humanLimits = new OverrideHumanLimits[(int)HumanBodyBones.LastBone];
-            else if (desc.humanLimits.Length != (int)HumanBodyBones.LastBone)
-                Array.Resize(ref desc.humanLimits, (int)HumanBodyBones.LastBone);
-            for (int i = 0; i < desc.humanLimits.Length; i++) {
-                ref var limit = ref desc.humanLimits[i];
-                if (limit.mode != OverrideMode.Inherit) continue;
-                var humanName = HumanTrait.BoneName[i];
-                bool matched = false;
-                if (srcDesc.human != null)
-                    foreach (var otherHuman in srcDesc.human)
-                        if (otherHuman.humanName == humanName) {
-                            limit = new OverrideHumanLimits {
-                                mode = otherHuman.limit.useDefaultValues ?
-                                    OverrideMode.Default :
-                                    OverrideMode.Override,
-                                min = otherHuman.limit.min,
-                                max = otherHuman.limit.max,
-                                center = otherHuman.limit.center,
-                            };
-                            matched = true;
-                            break;
-                        }
-                if (!matched) limit.mode = OverrideMode.Default;
-            }
-            return desc;
-        }
-
         HumanoidAvatarProcessor(Animator animator, Transform[] bones, UnityObject assetRoot, OverrideHumanDescription? overrideHuman) :
             this(animator.transform, bones, animator.avatar, assetRoot, overrideHuman) {
             this.animator = animator;
@@ -120,7 +56,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         HumanoidAvatarProcessor(Transform root, Transform[] bones, Avatar avatar, UnityObject assetRoot, OverrideHumanDescription? overrideHuman) {
             this.root = root;
             this.assetRoot = assetRoot;
-            this.overrideHuman = ResolveOverrideHumanDescription(overrideHuman, avatar);
+            this.overrideHuman = overrideHuman.Resolve(avatar);
             if (bones == null || bones.Length != (int)HumanBodyBones.LastBone) {
                 bones = MecanimUtils.GuessHumanoidBodyBones(root);
                 if (bones == null) throw new InvalidOperationException("Can not find humanoid bone mapping.");
@@ -157,7 +93,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var transformsToAdd = new Transform[skeletonBoneTransforms.Count];
             skeletonBoneTransforms.CopyTo(transformsToAdd);
             Array.Sort(transformsToAdd, new HierarchyComparer(true));
-            var humanBoneNames = HumanTrait.BoneName;
+            var humanBoneNames = MecanimUtils.HumanBoneNames;
             var desc = new HumanDescription {
                 armStretch = overrideHuman.armStretch,
                 upperArmTwist = overrideHuman.upperArmTwist,

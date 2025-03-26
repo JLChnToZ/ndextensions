@@ -39,7 +39,7 @@ namespace JLChnToZ.NDExtensions {
             return fetchedBones[(int)bone];
         }
 
-        void OnValidete() {
+        void OnValidate() {
 #pragma warning disable 0612
             if (fixHoverFeet) {
                 floorAdjustment = FloorAdjustmentMode.FixHoveringFeet;

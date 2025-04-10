@@ -1,10 +1,14 @@
 using System;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
+using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;
 
 namespace JLChnToZ.NDExtensions.Editors {
     [CustomEditor(typeof(RebakeHumanoid))]
     public class RebakeHumanoidEditor : Editor {
+        static I18N i18n;
+        static string tempAvatarPath;
         static readonly GUIContent tempContent = new();
         static readonly Vector3Int emptyMuscleIndex = new(-1, -1, -1);
         static GUIContent errorIconContent, customLimitsIconContent;
@@ -31,6 +35,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 #if VRC_SDK_VRCSDK3
         SerializedProperty adjustViewpointProp;
 #endif
+        SerializedProperty generatedAvatarProp;
         Animator animator;
         [NonSerialized] static Transform[] boneCache;
 
@@ -56,6 +61,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             feetSpacingProp = overrideHumanProp.FindPropertyRelative(nameof(OverrideHumanDescription.feetSpacing));
             hasTranslationDoFProp = overrideHumanProp.FindPropertyRelative(nameof(OverrideHumanDescription.hasTranslationDoF));
             customLimitsProp = overrideHumanProp.FindPropertyRelative(nameof(OverrideHumanDescription.humanLimits));
+            generatedAvatarProp = serializedObject.FindProperty(nameof(RebakeHumanoid.generatedAvatar));
             if (boneNames == null) boneNames = Array.ConvertAll(MecanimUtils.HumanBoneNames, ObjectNames.NicifyVariableName);
             if (muscleIndeces == null) {
                 muscleIndeces = new Vector3Int[HumanTrait.MuscleCount];
@@ -83,58 +89,47 @@ namespace JLChnToZ.NDExtensions.Editors {
                     };
                 }
             }
-            if (customLimitsIconContent == null)
-                customLimitsIconContent = new GUIContent(EditorGUIUtility.IconContent("JointAngularLimits")) {
-                    tooltip = "Custom human limits",
-                };
+            if (i18n == null) i18n = I18N.Instance;
+            if (customLimitsIconContent == null) customLimitsIconContent = new GUIContent(EditorGUIUtility.IconContent("JointAngularLimits"));
+            customLimitsIconContent.tooltip = i18n["RebakeHumanoid.boneMapping:customLimits"];
         }
 
         public override void OnInspectorGUI() {
-            serializedObject.Update();
-            EditorGUILayout.HelpBox(
-                "Please make sure your avatar is in T-pose.\nAny adjustments to the human bones in edit mode will be apply (bake) to the avatar on build.",
-                MessageType.Info
-            );
+            if (i18n == null) i18n = I18N.Instance;
+            I18NEditor.DrawLocaleField();
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Height Adjustments", EditorStyles.boldLabel);
+            serializedObject.Update();
+            EditorGUILayout.HelpBox(i18n["RebakeHumanoid:note"], MessageType.Info);
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.HEIGHT_ADJUST"), EditorStyles.boldLabel);
 #if VRC_SDK_VRCSDK3
-            EditorGUILayout.PropertyField(adjustViewpointProp);
+            EditorGUILayout.PropertyField(adjustViewpointProp, i18n.GetContent("RebakeHumanoid.adjustViewpoint"));
             if (adjustViewpointProp.boolValue)
-                EditorGUILayout.HelpBox(
-                    "Eye level adjustment will change the IK measurements of your avatar.\nYou may want to use \"arm span\" measurement mode in VRChat when wearing this avatar to avoid arms shorten issue.",
-                    MessageType.Info
-                );
+                EditorGUILayout.HelpBox(i18n["RebakeHumanoid.adjustViewpoint:note"], MessageType.Info);
 #endif
-            EditorGUILayout.PropertyField(floorAdjustmentProp);
+            i18n.EnumFieldLayout(floorAdjustmentProp, "RebakeHumanoid.floorAdjustment");
             var floorAdjustmentMode = (FloorAdjustmentMode)floorAdjustmentProp.intValue;
             if (floorAdjustmentMode == FloorAdjustmentMode.BareFeetToGround)
                 using (new EditorGUI.IndentLevelScope())
-                    EditorGUILayout.PropertyField(rendererWithBareFeetProp);
+                    EditorGUILayout.PropertyField(rendererWithBareFeetProp, i18n.GetContent("RebakeHumanoid.rendererWithBareFeet"));
 #if VRC_SDK_VRCSDK3
             if (!adjustViewpointProp.boolValue && (floorAdjustmentMode > FloorAdjustmentMode.BareFeetToGround || manualOffsetProp.vector3Value.y != 0))
-                EditorGUILayout.HelpBox(
-                    "You may need to enable \"Auto Adjust Viewpoint\" to match the avatar's eye level.",
-                    MessageType.Info
-                );
+                EditorGUILayout.HelpBox(i18n["FloorAdjustmentMode.FixSolesStuck:note"], MessageType.Info);
 #endif
             if (floorAdjustmentMode == FloorAdjustmentMode.FixHoveringFeet)
-                EditorGUILayout.HelpBox(
-                    "\"Fix Hover Feet\" can only try the best to ensure the avatar is standing on/above the ground in all scenarios.\nIf you have seletable shoes with different offsets, your avatar will still hover in some cases.",
-                    MessageType.Info
-                );
-            EditorGUILayout.PropertyField(manualOffsetProp);
+                EditorGUILayout.HelpBox(i18n["FloorAdjustmentMode.FixHoveringFeet:note"], MessageType.Info);
+            EditorGUILayout.PropertyField(manualOffsetProp, i18n.GetContent("RebakeHumanoid.manualOffset"));
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Bad Rigging Ad-Hoc Fixes", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(fixBoneOrientationProp);
-            EditorGUILayout.PropertyField(fixCrossLegsProp);
+            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.BAD_RIGGING_FIXES"), EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(fixBoneOrientationProp, i18n.GetContent("RebakeHumanoid.fixBoneOrientation"));
+            EditorGUILayout.PropertyField(fixCrossLegsProp, i18n.GetContent("RebakeHumanoid.fixCrossLegs"));
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Advanced", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.ADVANCED"), EditorStyles.boldLabel);
             Avatar avatar = null;
             bool hasValidAvatar = (!animator && !(target as Component).TryGetComponent(out animator)) ||
                 ((avatar = animator.avatar) != null && avatar.isHuman);
-            tempContent.text = "Human Description";
             using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
-                EditorGUILayout.PropertyField(overrideHumanModeProp, tempContent);
+                i18n.EnumFieldLayout(overrideHumanModeProp, "OverrideHumanDescription.mode");
                 if (changeCheck.changed) {
                     if (!hasValidAvatar && overrideHumanModeProp.intValue == (int)OverrideMode.Inherit)
                         overrideHumanModeProp.intValue = (int)OverrideMode.Default;
@@ -145,17 +140,17 @@ namespace JLChnToZ.NDExtensions.Editors {
                 using (new EditorGUI.IndentLevelScope()) {
                     using (new EditorGUILayout.HorizontalScope()) {
                         using (new EditorGUI.DisabledScope(!hasValidAvatar))
-                            if (GUILayout.Button("Copy")) FetchHumanProperties(avatar);
-                        if (GUILayout.Button("Default")) FetchHumanProperties(null);
+                            if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:copy"))) FetchHumanProperties(avatar);
+                        if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:default"))) FetchHumanProperties(null);
                     }
-                    EditorGUILayout.PropertyField(armStretchProp);
-                    EditorGUILayout.PropertyField(upperArmTwistProp);
-                    EditorGUILayout.PropertyField(lowerArmTwistProp);
-                    EditorGUILayout.PropertyField(legStretchProp);
-                    EditorGUILayout.PropertyField(lowerLegTwistProp);
-                    EditorGUILayout.PropertyField(upperLegTwistProp);
-                    EditorGUILayout.PropertyField(feetSpacingProp);
-                    EditorGUILayout.PropertyField(hasTranslationDoFProp);
+                    EditorGUILayout.PropertyField(armStretchProp, i18n.GetContent("OverrideHumanDescription.armStretch"));
+                    EditorGUILayout.PropertyField(upperArmTwistProp, i18n.GetContent("OverrideHumanDescription.upperArmTwist"));
+                    EditorGUILayout.PropertyField(lowerArmTwistProp, i18n.GetContent("OverrideHumanDescription.lowerArmTwist"));
+                    EditorGUILayout.PropertyField(legStretchProp, i18n.GetContent("OverrideHumanDescription.legStretch"));
+                    EditorGUILayout.PropertyField(lowerLegTwistProp, i18n.GetContent("OverrideHumanDescription.lowerLegTwist"));
+                    EditorGUILayout.PropertyField(upperLegTwistProp, i18n.GetContent("OverrideHumanDescription.upperLegTwist"));
+                    EditorGUILayout.PropertyField(feetSpacingProp, i18n.GetContent("OverrideHumanDescription.feetSpacing"));
+                    EditorGUILayout.PropertyField(hasTranslationDoFProp, i18n.GetContent("OverrideHumanDescription.hasTranslationDoF"));
                 }
             if (!hasValidAvatar && !overrideProp.boolValue) {
                 overrideProp.boolValue = true;
@@ -163,17 +158,20 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
             using (new EditorGUI.DisabledScope(!hasValidAvatar))
             using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
-                tempContent.text = "Override Bone Mapping";
-                EditorGUILayout.PropertyField(overrideProp, tempContent);
+                EditorGUILayout.PropertyField(overrideProp, i18n.GetContent("RebakeHumanoid.override"));
                 if (changeCheck.changed && overrideProp.boolValue) boneMappingProp.isExpanded = true;
             }
             if (!hasValidAvatar)
-                EditorGUILayout.HelpBox("You don't have a valid humanoid avatar, manual bone mapping is required.", MessageType.Warning);
+                EditorGUILayout.HelpBox(i18n["RebakeHumanoid.override:forced"], MessageType.Warning);
             if (overrideProp.boolValue) {
                 FetchBones();
+                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid.boneMapping:generateTemp")) &&
+                    (animator != null || (target as Component).TryGetComponent(out animator)))
+                    GenerateTemporaryAvatar();
+                EditorGUILayout.HelpBox(i18n["RebakeHumanoid.boneMapping:generateTemp:note"], MessageType.Info);
                 bool expaanded;
                 using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
-                    expaanded = EditorGUILayout.Foldout(boneMappingProp.isExpanded, boneMappingProp.displayName, true);
+                    expaanded = EditorGUILayout.Foldout(boneMappingProp.isExpanded, i18n["RebakeHumanoid.boneMapping"], true);
                     if (changeCheck.changed) boneMappingProp.isExpanded = expaanded;
                 }
                 if (expaanded)
@@ -186,8 +184,8 @@ namespace JLChnToZ.NDExtensions.Editors {
         void DrawBones(bool hasValidAvatar) {
             using (new EditorGUILayout.HorizontalScope()) {
                 using (new EditorGUI.DisabledScope(!hasValidAvatar))
-                    if (GUILayout.Button("Copy")) FetchBones(true);
-                if (GUILayout.Button("Guess")) FetchBones(true, true);
+                    if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:copy"))) FetchBones(true);
+                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:guess"))) FetchBones(true, true);
             }
             if (customLimitsProp.arraySize != HumanTrait.BoneCount)
                 customLimitsProp.arraySize = HumanTrait.BoneCount;
@@ -206,12 +204,12 @@ namespace JLChnToZ.NDExtensions.Editors {
                         }
                         string errorMessage = null;
                         if (boneCache[bone] == null) {
-                            if (HumanTrait.RequiredBone(bone)) errorMessage = "This bone is required for humanoid rig.";
+                            if (HumanTrait.RequiredBone(bone)) errorMessage = i18n["RebakeHumanoid.boneMapping:error_required"];
                         } else if (bone > 0) {
                             for (int bi = HumanTrait.GetParentBone(bone); bi >= 0; bi = HumanTrait.GetParentBone(bi)) {
                                 if (boneCache[bi] == null) continue;
                                 if (!boneCache[bone].IsChildOf(boneCache[bi]))
-                                    errorMessage = $"This bone must be a child of {boneNames[bi]} ({boneCache[bi].name}).";
+                                    errorMessage = string.Format(i18n["RebakeHumanoid.boneMapping:error_childof"], boneNames[bi], boneCache[bi].name);
                                 break;
                             }
                         }
@@ -255,7 +253,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             using (new EditorGUI.DisabledScope(!hasValidAvatar))
             using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
                 hasOverride = stateProp.intValue == (int)OverrideMode.Override;
-                hasOverride = EditorGUILayout.Toggle("Override Human Limits", hasOverride);
+                hasOverride = EditorGUILayout.Toggle(i18n.GetContent("OverrideHumanDescription.humanLimits"), hasOverride);
                 if (changeCheck.changed) {
                     stateProp.intValue = hasOverride ? (int)OverrideMode.Override : (int)OverrideMode.Default;
                     if (hasOverride) shouldSetDefaults = true;
@@ -285,7 +283,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                         EditorGUILayout.MinMaxSlider(ref min, ref max, -180F, 180F);
                         max = EditorGUILayout.FloatField(max, GUILayout.Width(50));
                         EditorGUIUtility.labelWidth = prefixSize * 0.5F;
-                        restValues[i] = EditorGUILayout.Slider("Ref. Angle", restValues[i], min, max);
+                        restValues[i] = EditorGUILayout.Slider(i18n.GetContent("OverrideHumanLimits.center"), restValues[i], min, max);
                         minValues[i] = min;
                         maxValues[i] = max;
                         EditorGUIUtility.labelWidth = prefixSize;
@@ -320,6 +318,45 @@ namespace JLChnToZ.NDExtensions.Editors {
             upperLegTwistProp.floatValue = human.upperLegTwist;
             feetSpacingProp.floatValue = human.feetSpacing;
             hasTranslationDoFProp.boolValue = human.hasTranslationDoF;
+        }
+
+        void GenerateTemporaryAvatar() {
+            var previousGeneratedAvatar = generatedAvatarProp.objectReferenceValue as Avatar;
+            if (previousGeneratedAvatar != null)
+                foreach (var other in FindObjectsOfType<RebakeHumanoid>(true)) {
+                    if (other == target) continue;
+                    if (other.generatedAvatar == previousGeneratedAvatar) {
+                        previousGeneratedAvatar = null;
+                        break;
+                    }
+                }
+            Undo.RecordObject(animator, "Generate Temporary Avatar");
+            if (HumanoidAvatarProcessor.GenerateTemporaryAvatar(animator, boneCache)) {
+                var generatedAvatar = animator.avatar;
+                if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(generatedAvatar))) {
+                    string path = null;
+                    if (previousGeneratedAvatar != null) {
+                        path = AssetDatabase.GetAssetPath(previousGeneratedAvatar);
+                        if (!string.IsNullOrEmpty(path)) AssetDatabase.DeleteAsset(path);
+                    }
+                    if (string.IsNullOrEmpty(path)) {
+                        if (string.IsNullOrEmpty(tempAvatarPath)) {
+                            var packageInfo = PackageManagerPackageInfo.FindForAssembly(typeof(RebakeHumanoid).Assembly);
+                            var dirPath = $"{packageInfo.resolvedPath}/Temp/";
+                            if (!Directory.Exists(dirPath)) {
+                                Directory.CreateDirectory(dirPath);
+                                AssetDatabase.Refresh();
+                            }
+                            tempAvatarPath = $"{packageInfo.assetPath}/Temp/";
+                        }
+                        path = AssetDatabase.GenerateUniqueAssetPath($"{tempAvatarPath}{animator.name} Temp Avatar.asset");
+                    }
+                    AssetDatabase.CreateAsset(generatedAvatar, path);
+                    AssetDatabase.SaveAssets();
+                    AssetDatabase.Refresh();
+                }
+                generatedAvatarProp.objectReferenceValue = generatedAvatar;
+            }
         }
     }
 }

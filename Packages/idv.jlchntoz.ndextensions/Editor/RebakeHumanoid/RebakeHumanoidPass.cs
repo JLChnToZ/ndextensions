@@ -73,7 +73,6 @@ namespace JLChnToZ.NDExtensions.Editors {
             return Vector3.zero;
         }
 
-
 #if VRC_SDK_VRCSDK3
         static void FixEyeRotation(VRCAvatarDescriptor vrcaDesc, RebakeHumanoid declaration) {
             ref var eyeSettings = ref vrcaDesc.customEyeLookSettings;

@@ -48,6 +48,13 @@ namespace JLChnToZ.NDExtensions.Editors {
             return processor.RegenerateAvatar();
         }
 
+        public static bool GenerateTemporaryAvatar(Animator root, Transform[] bones = null, OverrideHumanDescription? overrideHuman = null) {
+            var processor = new HumanoidAvatarProcessor(root, bones, null, overrideHuman) {
+                animationRelocator = null,
+            };
+            return processor.RegenerateAvatar();
+        }
+
         HumanoidAvatarProcessor(Animator animator, Transform[] bones, UnityObject assetRoot, OverrideHumanDescription? overrideHuman) :
             this(animator.transform, bones, animator.avatar, assetRoot, overrideHuman) {
             this.animator = animator;

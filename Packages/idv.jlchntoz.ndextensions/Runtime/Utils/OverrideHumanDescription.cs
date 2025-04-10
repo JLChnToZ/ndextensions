@@ -73,11 +73,8 @@ namespace JLChnToZ.NDExtensions {
     }
 
     public enum OverrideMode : byte {
-        [InspectorName("Inherit from existing avatar")]
         Inherit,
-        [InspectorName("Use default values")]
         Default,
-        [InspectorName("Override with custom values")]
         Override,
     }
 

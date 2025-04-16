@@ -18,8 +18,8 @@ namespace JLChnToZ.NDExtensions.Editors {
             var state = GatherObjects(context.AvatarRootTransform);
             try {
                 AssetDatabase.StartAssetEditing();
-                RemoveObjectsFromContainer(state);
-                CloneObjects(context.AssetContainer, state);
+                RemoveObjectsFromContainer(in state);
+                CloneObjects(context.AssetContainer, in state);
             } finally {
                 AssetDatabase.StopAssetEditing();
             }
@@ -34,31 +34,54 @@ namespace JLChnToZ.NDExtensions.Editors {
                 clonableObjects = new(),
                 scannedPaths = new(),
             };
-            while (objQueue.TryDequeue(out var pair)) {
-                if (state.clonableObjects.Contains(pair.target)) state.parents.Add(pair.parent);
-                if (!state.allObjects.Add(pair.target)) continue;
-                var assetPath = AssetDatabase.GetAssetPath(pair.target);
-                if (!string.IsNullOrEmpty(assetPath)) {
-                    if (!state.scannedPaths.TryGetValue(assetPath, out bool isCloned))
-                        state.scannedPaths.Add(assetPath, isCloned = AssetDatabase.LoadMainAssetAtPath(assetPath) is SubAssetContainer);
-                    if (!isCloned && assetPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) && AssetDatabase.IsNativeAsset(pair.target)) {
-                        state.parents.Add(pair.parent);
-                        state.clonableObjects.Add(pair.target);
-                    }
-                }
-                using var so = new SerializedObject(pair.target);
+            var dependencies = new Dictionary<UnityObject, HashSet<UnityObject>>();
+            while (objQueue.TryDequeue(out var target)) {
+                if (!state.allObjects.Add(target)) continue;
+                ValidateCloneable(target, in state, false);
+                using var so = new SerializedObject(target);
                 for (var prop = so.GetIterator(); prop.Next(true); ) {
                     if (prop.propertyType != SerializedPropertyType.ObjectReference) continue;
                     var value = prop.objectReferenceValue;
-                    if (value == null || value is GameObject || value is Component) continue;
-                    objQueue.Enqueue((pair.target, value));
+                    if (value == null || value == target) continue;
+                    if (!dependencies.TryGetValue(value, out var depd))
+                        dependencies[value] = depd = new();
+                    depd.Add(target);
+                    objQueue.Enqueue(value);
                 }
             }
+            foreach (var obj in state.clonableObjects) objQueue.Enqueue(obj);
+            while (objQueue.TryDequeue(out var target))
+                if (dependencies.TryGetValue(target, out var parents))
+                    foreach (var parent in parents)
+                        if (state.parents.Add(parent) &&
+                            ValidateCloneable(parent, in state, true))
+                            objQueue.Enqueue(parent);
             return state;
         }
 
-        static Queue<(UnityObject parent, UnityObject target)> WalkHierarchy(Transform root) {
-            var componentQueue = new Queue<(UnityObject, UnityObject)>();
+        static bool ValidateCloneable(UnityObject target, in State state, bool forced) {
+            var assetPath = AssetDatabase.GetAssetPath(target);
+            bool isAsset = !string.IsNullOrEmpty(assetPath);
+            bool isCloned = false;
+            if (isAsset && !state.scannedPaths.TryGetValue(assetPath, out isCloned)) {
+                isCloned = AssetDatabase.LoadMainAssetAtPath(assetPath) is SubAssetContainer;
+                state.scannedPaths.Add(assetPath, isCloned);
+            }
+            if (isCloned) return false;
+            if (isAsset && !forced) {
+                if (!assetPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (AssetDatabase.IsMainAsset(target) &&
+                    AssetDatabase.LoadAllAssetsAtPath(assetPath).Length <= 1)
+                    return false;
+            }
+            if (target is GameObject || target is Component)
+                return false;
+            return state.clonableObjects.Add(target);
+        }
+
+        static Queue<UnityObject> WalkHierarchy(Transform root) {
+            var componentQueue = new Queue<UnityObject>();
             var transformQueue = new Queue<Transform>();
             transformQueue.Enqueue(root);
             while (transformQueue.TryDequeue(out var transform)) {
@@ -66,7 +89,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 transform.GetComponents(tempComponents);
                 foreach (var component in tempComponents) {
                     if (component is Transform) continue;
-                    componentQueue.Enqueue((transform, component));
+                    componentQueue.Enqueue(component);
                 }
             }
             return componentQueue;
@@ -90,6 +113,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             foreach (var obj in state.clonableObjects) {
                 var clone = UnityObject.Instantiate(obj);
                 clone.name = obj.name;
+                clone.hideFlags = obj.hideFlags;
                 cloneMap[obj] = clone;
             }
             return cloneMap;

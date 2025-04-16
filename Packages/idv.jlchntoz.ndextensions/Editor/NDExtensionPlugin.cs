@@ -21,6 +21,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                 typeof(RebakeHumanoidContext),
                 seq => seq.Run(RebakeHumanoidPass.Instance)
             );
+            InPhase(BuildPhase.Optimizing)
+            .AfterPlugin("com.anatawa12.avatar-optimizer")
+            .AfterPlugin("nadena.dev.modular-avatar")
+            .Run(DeepCleanupPass.Instance);
         }
     }
 }

@@ -134,7 +134,10 @@ namespace JLChnToZ.NDExtensions.Editors {
             bool success = rebuiltAvatar.isValid;
             if (success) {
                 rebuiltAvatar.name = $"{root.name} Avatar (Generated)";
-                if (animator != null) animator.avatar = rebuiltAvatar;
+                if (animator != null) {
+                    animator.avatar = rebuiltAvatar;
+                    animator.Rebind();
+                }
                 if (assetRoot != null) AssetDatabase.AddObjectToAsset(rebuiltAvatar, assetRoot);
             } else
                 DestroyImmediate(rebuiltAvatar);

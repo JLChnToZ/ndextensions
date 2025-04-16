@@ -131,7 +131,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             enumProperty.GetFieldInfoAndStaticType(out var type);
             var localizedContent = GetContent(string.IsNullOrEmpty(label) ? enumProperty.name : label);
             if (type == null || !type.IsEnum) {
-                EditorGUILayout.PropertyField(enumProperty, localizedContent);
+                EditorGUILayout.PropertyField(enumProperty, localizedContent, (GUILayoutOption[])null);
                 return;
             }
             if (!enumCache.TryGetValue(type, out var cache)) {
@@ -148,7 +148,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 cache = (names, iValues);
                 enumCache[type] = cache;
             }
-            var rect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+            var rect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight, (GUILayoutOption[])null);
             using (var propScope = new EditorGUI.PropertyScope(rect, localizedContent, enumProperty))
             using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
                 rect = EditorGUI.PrefixLabel(rect, propScope.content);

@@ -7,6 +7,11 @@ using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;
 namespace JLChnToZ.NDExtensions.Editors {
     [CustomEditor(typeof(RebakeHumanoid))]
     public class RebakeHumanoidEditor : Editor {
+        static readonly GUILayoutOption[]
+            defaultLayout = null,
+            width20 = new[] { GUILayout.Width(20) },
+            width50 = new[] { GUILayout.Width(50) },
+            singleLineHeight = new[] { GUILayout.Height(EditorGUIUtility.singleLineHeight) };
         static I18N i18n;
         static string tempAvatarPath;
         static readonly GUIContent tempContent = new();
@@ -101,9 +106,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             serializedObject.Update();
             EditorGUILayout.HelpBox(i18n["RebakeHumanoid:note"], MessageType.Info);
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.HEIGHT_ADJUST"), EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.HEIGHT_ADJUST"), EditorStyles.boldLabel, defaultLayout);
 #if VRC_SDK_VRCSDK3
-            EditorGUILayout.PropertyField(adjustViewpointProp, i18n.GetContent("RebakeHumanoid.adjustViewpoint"));
+            EditorGUILayout.PropertyField(adjustViewpointProp, i18n.GetContent("RebakeHumanoid.adjustViewpoint"), defaultLayout);
             if (adjustViewpointProp.boolValue)
                 EditorGUILayout.HelpBox(i18n["RebakeHumanoid.adjustViewpoint:note"], MessageType.Info);
 #endif
@@ -118,13 +123,13 @@ namespace JLChnToZ.NDExtensions.Editors {
 #endif
             if (floorAdjustmentMode == FloorAdjustmentMode.FixHoveringFeet)
                 EditorGUILayout.HelpBox(i18n["FloorAdjustmentMode.FixHoveringFeet:note"], MessageType.Info);
-            EditorGUILayout.PropertyField(manualOffsetProp, i18n.GetContent("RebakeHumanoid.manualOffset"));
+            EditorGUILayout.PropertyField(manualOffsetProp, i18n.GetContent("RebakeHumanoid.manualOffset"), defaultLayout);
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.BAD_RIGGING_FIXES"), EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(fixBoneOrientationProp, i18n.GetContent("RebakeHumanoid.fixBoneOrientation"));
-            EditorGUILayout.PropertyField(fixCrossLegsProp, i18n.GetContent("RebakeHumanoid.fixCrossLegs"));
+            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.BAD_RIGGING_FIXES"), EditorStyles.boldLabel, defaultLayout);
+            EditorGUILayout.PropertyField(fixBoneOrientationProp, i18n.GetContent("RebakeHumanoid.fixBoneOrientation"), defaultLayout);
+            EditorGUILayout.PropertyField(fixCrossLegsProp, i18n.GetContent("RebakeHumanoid.fixCrossLegs"), defaultLayout);
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.ADVANCED"), EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.ADVANCED"), EditorStyles.boldLabel, defaultLayout);
             Avatar avatar = null;
             bool hasValidAvatar = (!animator && !(target as Component).TryGetComponent(out animator)) ||
                 ((avatar = animator.avatar) != null && avatar.isHuman);
@@ -138,19 +143,19 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
             if (overrideHumanModeProp.intValue == (int)OverrideMode.Override)
                 using (new EditorGUI.IndentLevelScope()) {
-                    using (new EditorGUILayout.HorizontalScope()) {
+                    using (new EditorGUILayout.HorizontalScope(defaultLayout)) {
                         using (new EditorGUI.DisabledScope(!hasValidAvatar))
-                            if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:copy"))) FetchHumanProperties(avatar);
-                        if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:default"))) FetchHumanProperties(null);
+                            if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:copy"), defaultLayout)) FetchHumanProperties(avatar);
+                        if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:default"), defaultLayout)) FetchHumanProperties(null);
                     }
-                    EditorGUILayout.PropertyField(armStretchProp, i18n.GetContent("OverrideHumanDescription.armStretch"));
-                    EditorGUILayout.PropertyField(upperArmTwistProp, i18n.GetContent("OverrideHumanDescription.upperArmTwist"));
-                    EditorGUILayout.PropertyField(lowerArmTwistProp, i18n.GetContent("OverrideHumanDescription.lowerArmTwist"));
-                    EditorGUILayout.PropertyField(legStretchProp, i18n.GetContent("OverrideHumanDescription.legStretch"));
-                    EditorGUILayout.PropertyField(lowerLegTwistProp, i18n.GetContent("OverrideHumanDescription.lowerLegTwist"));
-                    EditorGUILayout.PropertyField(upperLegTwistProp, i18n.GetContent("OverrideHumanDescription.upperLegTwist"));
-                    EditorGUILayout.PropertyField(feetSpacingProp, i18n.GetContent("OverrideHumanDescription.feetSpacing"));
-                    EditorGUILayout.PropertyField(hasTranslationDoFProp, i18n.GetContent("OverrideHumanDescription.hasTranslationDoF"));
+                    EditorGUILayout.PropertyField(armStretchProp, i18n.GetContent("OverrideHumanDescription.armStretch"), defaultLayout);
+                    EditorGUILayout.PropertyField(upperArmTwistProp, i18n.GetContent("OverrideHumanDescription.upperArmTwist"), defaultLayout);
+                    EditorGUILayout.PropertyField(lowerArmTwistProp, i18n.GetContent("OverrideHumanDescription.lowerArmTwist"), defaultLayout);
+                    EditorGUILayout.PropertyField(legStretchProp, i18n.GetContent("OverrideHumanDescription.legStretch"), defaultLayout);
+                    EditorGUILayout.PropertyField(lowerLegTwistProp, i18n.GetContent("OverrideHumanDescription.lowerLegTwist"), defaultLayout);
+                    EditorGUILayout.PropertyField(upperLegTwistProp, i18n.GetContent("OverrideHumanDescription.upperLegTwist"), defaultLayout);
+                    EditorGUILayout.PropertyField(feetSpacingProp, i18n.GetContent("OverrideHumanDescription.feetSpacing"), defaultLayout);
+                    EditorGUILayout.PropertyField(hasTranslationDoFProp, i18n.GetContent("OverrideHumanDescription.hasTranslationDoF"), defaultLayout);
                 }
             if (!hasValidAvatar && !overrideProp.boolValue) {
                 overrideProp.boolValue = true;
@@ -158,14 +163,14 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
             using (new EditorGUI.DisabledScope(!hasValidAvatar))
             using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
-                EditorGUILayout.PropertyField(overrideProp, i18n.GetContent("RebakeHumanoid.override"));
+                EditorGUILayout.PropertyField(overrideProp, i18n.GetContent("RebakeHumanoid.override"), defaultLayout);
                 if (changeCheck.changed && overrideProp.boolValue) boneMappingProp.isExpanded = true;
             }
             if (!hasValidAvatar)
                 EditorGUILayout.HelpBox(i18n["RebakeHumanoid.override:forced"], MessageType.Warning);
             if (overrideProp.boolValue) {
                 FetchBones();
-                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid.boneMapping:generateTemp")) &&
+                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid.boneMapping:generateTemp"), defaultLayout) &&
                     (animator != null || (target as Component).TryGetComponent(out animator)))
                     GenerateTemporaryAvatar();
                 EditorGUILayout.HelpBox(i18n["RebakeHumanoid.boneMapping:generateTemp:note"], MessageType.Info);
@@ -182,10 +187,10 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void DrawBones(bool hasValidAvatar) {
-            using (new EditorGUILayout.HorizontalScope()) {
+            using (new EditorGUILayout.HorizontalScope(defaultLayout)) {
                 using (new EditorGUI.DisabledScope(!hasValidAvatar))
-                    if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:copy"))) FetchBones(true);
-                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:guess"))) FetchBones(true, true);
+                    if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:copy"), defaultLayout)) FetchBones(true);
+                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:guess"), defaultLayout)) FetchBones(true, true);
             }
             if (customLimitsProp.arraySize != HumanTrait.BoneCount)
                 customLimitsProp.arraySize = HumanTrait.BoneCount;
@@ -193,7 +198,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 bool hasCustomLimit = false, shouldSetDefaults = false;
                 var currentLimitProp = customLimitsProp.GetArrayElementAtIndex(bone);
                 var overrideStateValue = currentLimitProp.FindPropertyRelative(nameof(OverrideHumanLimits.mode));
-                using (new EditorGUILayout.HorizontalScope()) {
+                using (new EditorGUILayout.HorizontalScope(singleLineHeight)) {
                     var element = boneMappingProp.GetArrayElementAtIndex(bone);
                     var rect = EditorGUILayout.GetControlRect();
                     tempContent.text = boneNames[bone];
@@ -228,11 +233,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                             shouldSetDefaults = true;
                         }
                         using (new EditorGUI.DisabledScope(true))
-                            GUILayout.Toggle(false, customLimitsIconContent, EditorStyles.miniButton, GUILayout.Width(20));
+                            GUILayout.Toggle(false, customLimitsIconContent, EditorStyles.miniButton, width20);
                     } else
                         using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
                             hasCustomLimit = overrideStateValue.intValue != (int)OverrideMode.Inherit;
-                            hasCustomLimit = GUILayout.Toggle(hasCustomLimit, customLimitsIconContent, EditorStyles.miniButton, GUILayout.Width(20));
+                            hasCustomLimit = GUILayout.Toggle(hasCustomLimit, customLimitsIconContent, EditorStyles.miniButton, width20);
                             if (changeCheck.changed) {
                                 overrideStateValue.intValue = hasCustomLimit ? hasValidAvatar ? (int)OverrideMode.Default : (int)OverrideMode.Override : (int)OverrideMode.Inherit;
                                 shouldSetDefaults = true;
@@ -253,7 +258,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             using (new EditorGUI.DisabledScope(!hasValidAvatar))
             using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
                 hasOverride = stateProp.intValue == (int)OverrideMode.Override;
-                hasOverride = EditorGUILayout.Toggle(i18n.GetContent("OverrideHumanDescription.humanLimits"), hasOverride);
+                hasOverride = EditorGUILayout.Toggle(i18n.GetContent("OverrideHumanDescription.humanLimits"), hasOverride, defaultLayout);
                 if (changeCheck.changed) {
                     stateProp.intValue = hasOverride ? (int)OverrideMode.Override : (int)OverrideMode.Default;
                     if (hasOverride) shouldSetDefaults = true;
@@ -279,11 +284,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                         EditorGUIUtility.labelWidth = prefixSize - 12;
                         float min = minValues[i], max = maxValues[i];
                         EditorGUILayout.PrefixLabel(muscleNames[index]);
-                        min = EditorGUILayout.FloatField(min, GUILayout.Width(50));
+                        min = EditorGUILayout.FloatField(min, width50);
                         EditorGUILayout.MinMaxSlider(ref min, ref max, -180F, 180F);
-                        max = EditorGUILayout.FloatField(max, GUILayout.Width(50));
+                        max = EditorGUILayout.FloatField(max, width50);
                         EditorGUIUtility.labelWidth = prefixSize * 0.5F;
-                        restValues[i] = EditorGUILayout.Slider(i18n.GetContent("OverrideHumanLimits.center"), restValues[i], min, max);
+                        restValues[i] = EditorGUILayout.Slider(i18n.GetContent("OverrideHumanLimits.center"), restValues[i], min, max, defaultLayout);
                         minValues[i] = min;
                         maxValues[i] = max;
                         EditorGUIUtility.labelWidth = prefixSize;

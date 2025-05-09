@@ -56,6 +56,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void AddAffectedComponent(Transform target, Component component, int refId = -1) {
+            if (target == null) return;
             if (!affectedComponents.TryGetValue(target, out var list))
                 affectedComponents[target] = list = new();
             list.Add((component, refId));

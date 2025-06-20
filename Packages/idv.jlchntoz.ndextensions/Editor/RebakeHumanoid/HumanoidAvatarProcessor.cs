@@ -31,6 +31,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             UnityObject assetRoot,
             bool normalize = false,
             bool fixCrossLeg = false,
+            bool fixPose = false,
             Transform[] bones = null,
             OverrideHumanDescription? overrideHuman = null,
             AnimationRelocator animationRelocator = null
@@ -39,8 +40,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                 animationRelocator = animationRelocator,
             };
             processor.ScanAffectedComponents();
-            if (normalize) processor.Normalize();
-            else if (fixCrossLeg) processor.NormalizeLeg();
+            if (normalize) processor.Normalize(fixPose);
+            else {
+                if (fixCrossLeg) processor.NormalizeLeg();
+                if (fixPose) processor.FixPose();
+            }
             processor.FixArmatureRoot();
             processor.UpdateBindposes();
             if (fixCrossLeg) processor.FixCrossLeg();

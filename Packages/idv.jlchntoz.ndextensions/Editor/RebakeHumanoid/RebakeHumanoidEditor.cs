@@ -20,6 +20,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         static Vector3Int[] muscleIndeces;
         static HumanLimit[] defaultHumanLimits;
         static string[] boneNames;
+        SerializedProperty fixPoseProp;
         SerializedProperty fixBoneOrientationProp;
         SerializedProperty fixCrossLegsProp;
         SerializedProperty floorAdjustmentProp;
@@ -45,6 +46,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         [NonSerialized] static Transform[] boneCache;
 
         void OnEnable() {
+            fixPoseProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixPose));
             fixBoneOrientationProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixBoneOrientation));
             fixCrossLegsProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixCrossLegs));
             floorAdjustmentProp = serializedObject.FindProperty(nameof(RebakeHumanoid.floorAdjustment));
@@ -105,6 +107,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.Space();
             serializedObject.Update();
             EditorGUILayout.HelpBox(i18n["RebakeHumanoid:note"], MessageType.Info);
+            EditorGUILayout.PropertyField(fixPoseProp, i18n.GetContent("RebakeHumanoid.fixPose"), defaultLayout);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.HEIGHT_ADJUST"), EditorStyles.boldLabel, defaultLayout);
 #if VRC_SDK_VRCSDK3

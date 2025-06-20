@@ -8,6 +8,7 @@ namespace JLChnToZ.NDExtensions {
     [RequireComponent(typeof(Animator))]
     [DisallowMultipleComponent]
     public sealed partial class RebakeHumanoid : MonoBehaviour, IBoneTransformProvider {
+        public bool fixPose;
         public Vector3 manualOffset;
         [Obsolete, SerializeField, HideInInspector] bool autoCalculateFootOffset, fixHoverFeet;
         public FloorAdjustmentMode floorAdjustment;

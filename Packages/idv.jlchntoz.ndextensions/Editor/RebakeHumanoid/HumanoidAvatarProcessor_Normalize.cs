@@ -4,9 +4,11 @@ using UnityEngine;
 namespace JLChnToZ.NDExtensions.Editors {
     public partial class HumanoidAvatarProcessor {
         #region Normalize Bone Rotation
-        void Normalize() {
-            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+        void Normalize(bool fixPose = false) {
+            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++) {
                 Normalize(bone);
+                if (fixPose) FixPose(bone);
+            }
         }
 
         void NormalizeLeg() {
@@ -50,6 +52,38 @@ namespace JLChnToZ.NDExtensions.Editors {
                 RecordMovedBone(twistBone, twistOrgMatrix);
             }
             RestoreCachedPositions();
+        }
+
+        void FixPose() {
+            for (var bone = HumanBodyBones.LeftUpperLeg; bone <= HumanBodyBones.RightLowerArm; bone++)
+                FixPose(bone);
+        }
+
+        void FixPose(HumanBodyBones bone) {
+            if (bone < HumanBodyBones.LeftUpperLeg || bone > HumanBodyBones.RightLowerArm) return;
+            var transform = bones[(int)bone];
+            if (transform == null) return;
+            Vector3 orgV = Vector3.zero, newV = Vector3.zero;
+            int childCount = 0;
+            for (int b = (int)bone + 1; b <= (int)HumanBodyBones.RightLowerArm; b++) {
+                if (HumanTrait.GetParentBone(b) != (int)bone) continue;
+                var child = bones[b];
+                if (child == null) continue;
+                orgV += (child.position - transform.position).normalized;
+                childCount++;
+            }
+            if (childCount > 0) {
+                orgV /= childCount;
+                int longestAxis = 0;
+                float sign = Mathf.Sign(orgV.x);
+                for (int i = 1; i < 3; i++)
+                    if (Mathf.Abs(orgV[i]) > Mathf.Abs(orgV[longestAxis])) {
+                        longestAxis = i;
+                        sign = Mathf.Sign(orgV[i]);
+                    }
+                newV[longestAxis] = sign;
+                transform.rotation = Quaternion.FromToRotation(orgV, newV) * transform.rotation;
+            }
         }
 
         Quaternion GetAdjustedRotation(int bone, Transform transform) {

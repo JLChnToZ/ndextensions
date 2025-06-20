@@ -43,6 +43,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 ctx.AssetContainer,
                 declaration.fixBoneOrientation,
                 declaration.fixCrossLegs,
+                declaration.fixPose,
                 declaration.@override ? declaration.boneMapping : null,
                 declaration.overrideHuman,
                 extCtx.Relocator

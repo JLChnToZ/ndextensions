@@ -227,28 +227,50 @@ namespace JLChnToZ.NDExtensions.Editors {
             target.name = GameObjectUtility.GetUniqueNameForSibling(dest, target.name);
             target.SetParent(dest, true);
             var newPath = target.GetPath(root);
+            var bindings = new List<EditorCurveBinding>();
+            var curves = new List<AnimationCurve>();
+            var objRefs = new List<ObjectReferenceKeyframe[]>();
             foreach (var clip in relocator.OriginalClips) {
                 var newClip = relocator[clip];
                 bool isCloned = newClip != clip;
                 foreach (var binding in AnimationUtility.GetCurveBindings(newClip)) {
                     if (!ShouldRemapBinding(in binding, out var newBinding, oldPath, newPath, drivenActivePath, out var keepOld)) continue;
+                    if (!keepOld) {
+                        bindings.Add(binding);
+                        curves.Add(null);
+                    }
+                    var curve = AnimationUtility.GetEditorCurve(newClip, binding);
+                    if (curve != null) {
+                        bindings.Add(newBinding);
+                        curves.Add(curve);
+                    }
+                }
+                if (bindings.Count > 0) {
                     if (!isCloned) {
                         newClip = relocator.GetClone(newClip);
                         isCloned = true;
                     }
-                    var curve = AnimationUtility.GetEditorCurve(newClip, binding);
-                    if (!keepOld) AnimationUtility.SetEditorCurve(newClip, binding, null);
-                    if (curve != null) AnimationUtility.SetEditorCurve(newClip, newBinding, curve);
+                    AnimationUtility.SetEditorCurves(newClip, bindings.ToArray(), curves.ToArray());
+                    bindings.Clear();
+                    curves.Clear();
                 }
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(newClip)) {
                     if (!ShouldRemapBinding(in binding, out var newBinding, oldPath, newPath, drivenActivePath, out var keepOld)) continue;
-                    if (!isCloned) {
-                        newClip = relocator.GetClone(newClip);
-                        isCloned = true;
+                    if (!keepOld) {
+                        bindings.Add(binding);
+                        objRefs.Add(null);
                     }
-                    var keyframes = AnimationUtility.GetObjectReferenceCurve(newClip, binding);
-                    if (!keepOld) AnimationUtility.SetObjectReferenceCurve(newClip, binding, null);
-                    if (keyframes != null) AnimationUtility.SetObjectReferenceCurve(newClip, newBinding, keyframes);
+                    var objRef = AnimationUtility.GetObjectReferenceCurve(newClip, binding);
+                    if (objRef != null) {
+                        bindings.Add(newBinding);
+                        objRefs.Add(objRef);
+                    }
+                }
+                if (bindings.Count > 0) {
+                    if (!isCloned) newClip = relocator.GetClone(newClip);
+                    AnimationUtility.SetObjectReferenceCurves(newClip, bindings.ToArray(), objRefs.ToArray());
+                    bindings.Clear();
+                    objRefs.Clear();
                 }
             }
         }

@@ -15,13 +15,16 @@ namespace JLChnToZ.NDExtensions.Editors {
     public class ConstraintReducerPass : Pass<ConstraintReducerPass> {
         const Axis ALL_AXES = Axis.X | Axis.Y | Axis.Z;
         static readonly HashSet<Transform> tempTransforms = new HashSet<Transform>();
+        static readonly Queue<Transform> tempTransformQueue = new Queue<Transform>();
         static readonly List<Component> tempComponents = new List<Component>();
+        static readonly List<EditorCurveBinding> tempBindings = new List<EditorCurveBinding>();
+        static readonly List<AnimationCurve> tempCurves = new List<AnimationCurve>();
+        static readonly List<ObjectReferenceKeyframe[]> tempObjRefs = new List<ObjectReferenceKeyframe[]>();
 #if VRC_SDK_VRCSDK3
         static readonly List<VRCConstraintBase> tempVRCConstraints = new List<VRCConstraintBase>();
         static readonly Dictionary<Transform, List<VRCConstraintBase>> vrcConstraintSources = new Dictionary<Transform, List<VRCConstraintBase>>();
 #endif
         static readonly Dictionary<string, PathType> pathOfInterests = new Dictionary<string, PathType>(StringComparer.Ordinal);
-        static readonly Queue<Transform> tempTransformQueue = new Queue<Transform>();
 
         public override string DisplayName => "Constraint Reducer";
 
@@ -227,50 +230,47 @@ namespace JLChnToZ.NDExtensions.Editors {
             target.name = GameObjectUtility.GetUniqueNameForSibling(dest, target.name);
             target.SetParent(dest, true);
             var newPath = target.GetPath(root);
-            var bindings = new List<EditorCurveBinding>();
-            var curves = new List<AnimationCurve>();
-            var objRefs = new List<ObjectReferenceKeyframe[]>();
             foreach (var clip in relocator.OriginalClips) {
                 var newClip = relocator[clip];
                 bool isCloned = newClip != clip;
                 foreach (var binding in AnimationUtility.GetCurveBindings(newClip)) {
                     if (!ShouldRemapBinding(in binding, out var newBinding, oldPath, newPath, drivenActivePath, out var keepOld)) continue;
                     if (!keepOld) {
-                        bindings.Add(binding);
-                        curves.Add(null);
+                        tempBindings.Add(binding);
+                        tempCurves.Add(null);
                     }
                     var curve = AnimationUtility.GetEditorCurve(newClip, binding);
                     if (curve != null) {
-                        bindings.Add(newBinding);
-                        curves.Add(curve);
+                        tempBindings.Add(newBinding);
+                        tempCurves.Add(curve);
                     }
                 }
-                if (bindings.Count > 0) {
+                if (tempBindings.Count > 0) {
                     if (!isCloned) {
                         newClip = relocator.GetClone(newClip);
                         isCloned = true;
                     }
-                    AnimationUtility.SetEditorCurves(newClip, bindings.ToArray(), curves.ToArray());
-                    bindings.Clear();
-                    curves.Clear();
+                    AnimationUtility.SetEditorCurves(newClip, tempBindings.ToArray(), tempCurves.ToArray());
+                    tempBindings.Clear();
+                    tempCurves.Clear();
                 }
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(newClip)) {
                     if (!ShouldRemapBinding(in binding, out var newBinding, oldPath, newPath, drivenActivePath, out var keepOld)) continue;
                     if (!keepOld) {
-                        bindings.Add(binding);
-                        objRefs.Add(null);
+                        tempBindings.Add(binding);
+                        tempObjRefs.Add(null);
                     }
                     var objRef = AnimationUtility.GetObjectReferenceCurve(newClip, binding);
-                    if (objRef != null) {
-                        bindings.Add(newBinding);
-                        objRefs.Add(objRef);
+                    if (objRef != null && objRef.Length > 0) {
+                        tempBindings.Add(newBinding);
+                        tempObjRefs.Add(objRef);
                     }
                 }
-                if (bindings.Count > 0) {
+                if (tempBindings.Count > 0) {
                     if (!isCloned) newClip = relocator.GetClone(newClip);
-                    AnimationUtility.SetObjectReferenceCurves(newClip, bindings.ToArray(), objRefs.ToArray());
-                    bindings.Clear();
-                    objRefs.Clear();
+                    AnimationUtility.SetObjectReferenceCurves(newClip, tempBindings.ToArray(), tempObjRefs.ToArray());
+                    tempBindings.Clear();
+                    tempObjRefs.Clear();
                 }
             }
         }

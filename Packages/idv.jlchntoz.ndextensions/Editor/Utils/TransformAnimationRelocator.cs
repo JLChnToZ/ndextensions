@@ -25,7 +25,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
             var deltaPos = newPos - oldPos;
             var deltaRot = newRot * Quaternion.Inverse(oldRot);
-            foreach (var clip in relocator.GetRelaventClipsForEdit(transform)) {
+            foreach (var clip in relocator.GetRelevantClipsForEdit(transform)) {
                 EditorCurveBinding? qX = null, qY = null, qZ = null, qW = null, eulerX = null, eulerY = null, eulerZ = null;
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     switch (binding.propertyName) {

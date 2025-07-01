@@ -17,9 +17,16 @@ namespace JLChnToZ.NDExtensions.Editors {
             );
             InPhase(BuildPhase.Transforming)
             .AfterPlugin("nadena.dev.modular-avatar")
-            .WithRequiredExtension(
-                typeof(RebakeHumanoidContext),
+            .WithRequiredExtensions(
+                new[] { typeof(AnimationRelocatorContext), typeof(RebakeHumanoidContext) },
                 seq => seq.Run(RebakeHumanoidPass.Instance)
+            );
+            InPhase(BuildPhase.Optimizing)
+            .AfterPlugin("nadena.dev.modular-avatar")
+            .BeforePlugin("com.anatawa12.avatar-optimizer")
+            .WithRequiredExtension(
+                typeof(AnimationRelocatorContext),
+                seq => seq.Run(ConstraintReducerPass.Instance)
             );
             InPhase(BuildPhase.Optimizing)
             .AfterPlugin("com.anatawa12.avatar-optimizer")

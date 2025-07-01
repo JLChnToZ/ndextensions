@@ -12,6 +12,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         readonly Dictionary<Component, HashSet<AnimationClip>> component2Anim = new();
         readonly Dictionary<AnimationClip, HashSet<AnimatorController>> dependencies = new();
         readonly Dictionary<AnimationClip, AnimationClip> clonedClips = new();
+        readonly HashSet<AnimationClip> clonedClipsSet = new();
 
         public RuntimeAnimatorController this[RuntimeAnimatorController controller] =>
             controller != null &&
@@ -20,6 +21,14 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public AnimationClip this[AnimationClip clip] =>
             clip != null && clonedClips.TryGetValue(clip, out var clone) ? clone : clip;
+
+        public ICollection<AnimationClip> OriginalClips => dependencies.Keys;
+
+        public ICollection<AnimationClip> ClonedClips => clonedClips.Values;
+
+        public ICollection<RuntimeAnimatorController> OriginalControllers => controllerOverrides.Keys;
+
+        public ICollection<AnimatorOverrideController> OverrideControllers => controllerOverrides.Values;
 
         public AnimationRelocator(Transform root) => this.root = root;
 
@@ -104,29 +113,32 @@ namespace JLChnToZ.NDExtensions.Editors {
             clips.Add(clip);
         }
 
-        public IEnumerable<AnimationClip> GetRelaventClipsForEdit(Component component) {
+        public bool HasRelevantClips(Component component) =>
+            component != null && component2Anim.ContainsKey(component);
+
+        public IEnumerable<AnimationClip> GetRelevantClipsForEdit(Component component) {
             if (component == null || !component2Anim.TryGetValue(component, out var animSet))
                 yield break;
-            foreach (var clip in animSet) {
-                if (!clonedClips.TryGetValue(clip, out var clone)) {
-                    clonedClips[clip] = clone = Instantiate(clip);
-                    if (dependencies.TryGetValue(clip, out var depdControllers))
-                        foreach (var controller in depdControllers) {
-                            if (controller == null) continue;
-                            if (!controllerOverrides.TryGetValue(controller, out var overrideController) || overrideController == null)
-                                controllerOverrides[controller] = overrideController = new AnimatorOverrideController {
-                                    name = $"{controller.name} (Override)",
-                                    runtimeAnimatorController = controller,
-                                };
-                            overrideController[clip] = clone;
-                        }
-                }
-                yield return clone;
-            }
+            foreach (var clip in animSet) yield return GetClone(clip);
         }
 
-        public ICollection<AnimationClip> GetAllCloneClips() => clonedClips.Values;
-
-        public ICollection<AnimatorOverrideController> GetAllOverrideControllers() => controllerOverrides.Values;
+        public AnimationClip GetClone(AnimationClip clip) {
+            if (clonedClipsSet.Contains(clip)) return clip;
+            if (clonedClips.TryGetValue(clip, out var clone)) return clone;
+            clonedClips[clip] = clone = Instantiate(clip);
+            clone.name = $"{clip.name} Modified";
+            if (dependencies.TryGetValue(clip, out var depdControllers))
+                foreach (var controller in depdControllers) {
+                    if (controller == null) continue;
+                    if (!controllerOverrides.TryGetValue(controller, out var overrideController) || overrideController == null)
+                        controllerOverrides[controller] = overrideController = new AnimatorOverrideController {
+                            name = $"{controller.name} Override",
+                            runtimeAnimatorController = controller,
+                        };
+                    overrideController[clip] = clone;
+                    clonedClipsSet.Add(clone);
+                }
+            return clone;
+        }
     }
 }

@@ -12,22 +12,19 @@ namespace JLChnToZ.NDExtensions.Editors {
         protected override void Execute(BuildContext ctx) {
             if (!ctx.AvatarRootObject.TryGetComponent(out RebakeHumanoid declaration)) return;
             if (!declaration.@override) declaration.RefetchBones(); // Force refetch bones
-            var extCtx = ctx.Extension<RebakeHumanoidContext>();
+            var rebakeContext = ctx.Extension<RebakeHumanoidContext>();
+            var relocatorContext = ctx.Extension<AnimationRelocatorContext>();
             var animator = declaration.Animator;
-            extCtx.GetAnimationController(animator.runtimeAnimatorController);
+            relocatorContext.GetAnimationController(animator.runtimeAnimatorController);
 #if VRC_SDK_VRCSDK3
             var eyePosition = declaration.adjustViewpoint ? MeasureEyePosition(declaration) : Vector3.zero;
-            if (declaration.TryGetComponent(out VRCAvatarDescriptor vrcaDesc)) {
-                extCtx.GetAnimationControllers(vrcaDesc.baseAnimationLayers);
-                extCtx.GetAnimationControllers(vrcaDesc.specialAnimationLayers);
-            }
 #endif
             var hips = declaration.GetBoneTransform(HumanBodyBones.Hips);
             if (hips != null) {
                 float yOffset = 0;
                 switch (declaration.floorAdjustment) {
                     case FloorAdjustmentMode.BareFeetToGround:
-                        yOffset = extCtx.BareFeetOffset;
+                        yOffset = rebakeContext.BareFeetOffset;
                         break;
                     case FloorAdjustmentMode.FixSolesStuck:
                     case FloorAdjustmentMode.FixHoveringFeet:
@@ -46,19 +43,17 @@ namespace JLChnToZ.NDExtensions.Editors {
                 declaration.fixPose,
                 declaration.@override ? declaration.boneMapping : null,
                 declaration.overrideHuman,
-                extCtx.Relocator
+                relocatorContext.Relocator
             );
 #if VRC_SDK_VRCSDK3
-            if (vrcaDesc != null) {
+            if (declaration.TryGetComponent(out VRCAvatarDescriptor vrcaDesc)) {
                 if (declaration.adjustViewpoint)
                     vrcaDesc.ViewPosition += MeasureEyePosition(declaration) - eyePosition;
                 if (declaration.fixBoneOrientation)
                     FixEyeRotation(vrcaDesc, declaration);
-                extCtx.AssignAnimationControllers(vrcaDesc.baseAnimationLayers);
-                extCtx.AssignAnimationControllers(vrcaDesc.specialAnimationLayers);
             }
 #endif
-            animator.runtimeAnimatorController = extCtx.GetRelocatedController(animator.runtimeAnimatorController);
+            animator.runtimeAnimatorController = relocatorContext.GetRelocatedController(animator.runtimeAnimatorController);
             DestroyImmediate(declaration);
         }
 

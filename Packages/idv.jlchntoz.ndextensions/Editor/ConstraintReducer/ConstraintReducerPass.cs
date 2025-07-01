@@ -18,7 +18,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         static readonly List<Component> tempComponents = new List<Component>();
 #if VRC_SDK_VRCSDK3
         static readonly List<VRCConstraintBase> tempVRCConstraints = new List<VRCConstraintBase>();
-        static readonly Dictionary<Transform, VRCConstraintBase> scaleConstraintTargets = new Dictionary<Transform, VRCConstraintBase>();
+        static readonly Dictionary<Transform, List<VRCConstraintBase>> vrcConstraintSources = new Dictionary<Transform, List<VRCConstraintBase>>();
 #endif
         static readonly Dictionary<string, PathType> pathOfInterests = new Dictionary<string, PathType>(StringComparer.Ordinal);
         static readonly Queue<Transform> tempTransformQueue = new Queue<Transform>();
@@ -35,8 +35,12 @@ namespace JLChnToZ.NDExtensions.Editors {
             try {
 #if VRC_SDK_VRCSDK3
                 rootTransform.GetComponentsInChildren(true, tempVRCConstraints);
-                foreach (var c in tempVRCConstraints)
-                    scaleConstraintTargets[c.GetEffectiveTargetTransform()] = c;
+                foreach (var c in tempVRCConstraints) {
+                    var transform = c.GetEffectiveTargetTransform();
+                    if (!vrcConstraintSources.TryGetValue(transform, out var list))
+                        vrcConstraintSources[transform] = list = new List<VRCConstraintBase>();
+                    list.Add(c);
+                }
 #endif
                 var relocator = relocatorContext.Relocator;
                 foreach (var c in rootTransform.GetComponentsInChildren<ParentConstraint>(true)) {
@@ -63,7 +67,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 tempComponents.Clear();
 #if VRC_SDK_VRCSDK3
                 tempVRCConstraints.Clear();
-                scaleConstraintTargets.Clear();
+                vrcConstraintSources.Clear();
 #endif
             }
         }
@@ -200,12 +204,14 @@ namespace JLChnToZ.NDExtensions.Editors {
                         tempTransformQueue.Enqueue(sourceTransform);
                 }
 #if VRC_SDK_VRCSDK3
-            if (scaleConstraintTargets.TryGetValue(transform, out var vsc))
-                foreach (var s in vsc.Sources) {
-                    var sourceTransform = s.SourceTransform;
-                    if (sourceTransform != null && sourceTransform.IsChildOf(root))
-                        tempTransformQueue.Enqueue(sourceTransform);
-                }
+            if (vrcConstraintSources.TryGetValue(transform, out var vcs))
+                foreach (var vc in vcs)
+                    if (vc is VRCScaleConstraintBase vsc)
+                        foreach (var source in vsc.Sources) {
+                            var sourceTransform = source.SourceTransform;
+                            if (sourceTransform != null && sourceTransform.IsChildOf(root))
+                                tempTransformQueue.Enqueue(sourceTransform);
+                        }
 #endif
         }
 

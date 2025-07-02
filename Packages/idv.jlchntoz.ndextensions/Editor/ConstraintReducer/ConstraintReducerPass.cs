@@ -15,7 +15,6 @@ using UnityObject = UnityEngine.Object;
 namespace JLChnToZ.NDExtensions.Editors {
     public class ConstraintReducerPass : Pass<ConstraintReducerPass> {
         const Axis ALL_AXES = Axis.X | Axis.Y | Axis.Z;
-        readonly HashSet<Transform> tempTransforms = new();
         readonly Queue<Transform> tempTransformQueue = new();
         readonly List<Component> tempComponents = new();
 #if VRC_SDK_VRCSDK3
@@ -44,29 +43,24 @@ namespace JLChnToZ.NDExtensions.Editors {
                     list.AddLast(c);
                 }
 #endif
-                foreach (var c in rootTransform.GetComponentsInChildren<ParentConstraint>(true)) {
-                    var transform = Process(animContext, c, rootTransform);
-                    if (transform != null) tempTransforms.Add(transform);
-                }
+                foreach (var c in rootTransform.GetComponentsInChildren<ParentConstraint>(true))
+                    Process(animContext, c, rootTransform);
 #if VRC_SDK_VRCSDK3
                 foreach (var c in tempVRCConstraints)
-                    if (c != null && c is VRCParentConstraintBase pc) {
-                        var transform = Process(animContext, pc, rootTransform);
-                        if (transform != null) tempTransforms.Add(transform);
-                    }
+                    if (c != null && c is VRCParentConstraintBase pc)
+                        Process(animContext, pc, rootTransform);
                 foreach (var pb in rootTransform.GetComponentsInChildren<VRCPhysBoneBase>(true)) {
                     var pbRootTransform = pb.GetRootTransform();
-                    foreach (var transform in tempTransforms)
-                        if (transform.IsChildOf(pbRootTransform)) {
+                    foreach (var kv in transferParents)
+                        if (kv.Value == pbRootTransform || kv.Value.IsChildOf(pbRootTransform)) {
                             pb.ignoreTransforms ??= new List<Transform>();
-                            pb.ignoreTransforms.Add(transform);
+                            pb.ignoreTransforms.Add(kv.Key);
                         }
                 }
 #endif
                 foreach (var kv in transferParents)
                     kv.Key.SetParent(kv.Value, true);
             } finally {
-                tempTransforms.Clear();
                 tempComponents.Clear();
 #if VRC_SDK_VRCSDK3
                 tempVRCConstraints.Clear();
@@ -76,50 +70,47 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
         }
 
-        Transform Process(AnimatorServicesContext context, ParentConstraint c, Transform rootTransform) {
+        void Process(AnimatorServicesContext context, ParentConstraint c, Transform rootTransform) {
             if (!c.isActiveAndEnabled || !c.constraintActive ||
                 (c.rotationAxis & ALL_AXES) != ALL_AXES || (c.translationAxis & ALL_AXES) != ALL_AXES ||
                 c.sourceCount != 1 || !CheckIfOnlyComponent(c))
-                return null;
+                return;
             var source = c.GetSource(0);
-            if (source.weight != 1F) return null;
+            if (source.weight != 1F) return;
             var sourceTransform = source.sourceTransform;
             if (sourceTransform == null ||
                 !sourceTransform.IsChildOf(rootTransform) ||
                 !sourceTransform.gameObject.activeInHierarchy)
-                return null;
+                return;
             var targetTransform = c.transform;
             if (!CheckFulfillAndGetDrivenPath(context, c.GetType(), sourceTransform, targetTransform, rootTransform, out var drivenActiveBinding))
-                return null;
+                return;
             UnityObject.DestroyImmediate(c, true);
             transferParents[targetTransform] = sourceTransform;
             if (drivenActiveBinding.HasValue)
                 CopyBinding(context, drivenActiveBinding.Value, rootTransform, targetTransform);
-            return targetTransform;
         }
 
 #if VRC_SDK_VRCSDK3
-        Transform Process(AnimatorServicesContext context, VRCParentConstraintBase c, Transform rootTransform) {
+        void Process(AnimatorServicesContext context, VRCParentConstraintBase c, Transform rootTransform) {
             if (!c.isActiveAndEnabled || !c.IsActive || c.FreezeToWorld ||
                 !c.AffectsPositionX || !c.AffectsPositionY || !c.AffectsPositionZ ||
                 !c.AffectsRotationX || !c.AffectsRotationY || !c.AffectsRotationZ ||
                 c.Sources.Count != 1 || !CheckIfOnlyComponent(c))
-                return null;
+                return;
             var source = c.Sources[0];
-            if (source.Weight != 1F) return null;
+            if (source.Weight != 1F) return;
             var sourceTransform = source.SourceTransform;
             if (sourceTransform == null ||
                 !sourceTransform.IsChildOf(rootTransform) ||
-                !sourceTransform.gameObject.activeInHierarchy)
-                return null;
-            if (!CheckFulfillAndGetDrivenPath(context, c.GetType(), sourceTransform, c.transform, rootTransform, out var drivenActiveBinding))
-                return null;
+                !sourceTransform.gameObject.activeInHierarchy ||
+                !CheckFulfillAndGetDrivenPath(context, c.GetType(), sourceTransform, c.transform, rootTransform, out var drivenActiveBinding))
+                return;
             var targetTransform = c.GetEffectiveTargetTransform();
             UnityObject.DestroyImmediate(c, true);
             transferParents[targetTransform] = sourceTransform;
             if (drivenActiveBinding.HasValue)
                 CopyBinding(context, drivenActiveBinding.Value, rootTransform, targetTransform);
-            return targetTransform;
         }
 #endif
 

@@ -9,7 +9,10 @@ using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
     public sealed class DeepCleanupPass : Pass<DeepCleanupPass> {
-        static readonly List<Component> tempComponents = new();
+        readonly List<Component> tempComponents = new();
+        readonly Queue<Transform> tempTransforms = new();
+        readonly Queue<UnityObject> tempQueue = new();
+        readonly Dictionary<UnityObject, UnityObject> tempClones = new();
 
         public override string DisplayName => "Deep Cleanup";
 
@@ -26,8 +29,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             UnityObject.DestroyImmediate(m);
         }
 
-        static State GatherObjects(Transform root) {
-            var objQueue = WalkHierarchy(root);
+        State GatherObjects(Transform root) {
             var state = new State {
                 allObjects = new(),
                 parents = new(),
@@ -35,7 +37,16 @@ namespace JLChnToZ.NDExtensions.Editors {
                 scannedPaths = new(),
             };
             var dependencies = new Dictionary<UnityObject, HashSet<UnityObject>>();
-            while (objQueue.TryDequeue(out var target)) {
+            tempTransforms.Enqueue(root);
+            while (tempTransforms.TryDequeue(out var transform)) {
+                foreach (Transform child in transform) tempTransforms.Enqueue(child);
+                transform.GetComponents(tempComponents);
+                foreach (var component in tempComponents) {
+                    if (component is Transform) continue;
+                    tempQueue.Enqueue(component);
+                }
+            }
+            while (tempQueue.TryDequeue(out var target)) {
                 if (!state.allObjects.Add(target)) continue;
                 ValidateCloneable(target, in state, false);
                 using var so = new SerializedObject(target);
@@ -46,16 +57,16 @@ namespace JLChnToZ.NDExtensions.Editors {
                     if (!dependencies.TryGetValue(value, out var depd))
                         dependencies[value] = depd = new();
                     depd.Add(target);
-                    objQueue.Enqueue(value);
+                    tempQueue.Enqueue(value);
                 }
             }
-            foreach (var obj in state.clonableObjects) objQueue.Enqueue(obj);
-            while (objQueue.TryDequeue(out var target))
+            foreach (var obj in state.clonableObjects) tempQueue.Enqueue(obj);
+            while (tempQueue.TryDequeue(out var target))
                 if (dependencies.TryGetValue(target, out var parents))
                     foreach (var parent in parents)
                         if (state.parents.Add(parent) &&
                             ValidateCloneable(parent, in state, true))
-                            objQueue.Enqueue(parent);
+                            tempQueue.Enqueue(parent);
             return state;
         }
 
@@ -80,21 +91,6 @@ namespace JLChnToZ.NDExtensions.Editors {
             return state.clonableObjects.Add(target);
         }
 
-        static Queue<UnityObject> WalkHierarchy(Transform root) {
-            var componentQueue = new Queue<UnityObject>();
-            var transformQueue = new Queue<Transform>();
-            transformQueue.Enqueue(root);
-            while (transformQueue.TryDequeue(out var transform)) {
-                foreach (Transform child in transform) transformQueue.Enqueue(child);
-                transform.GetComponents(tempComponents);
-                foreach (var component in tempComponents) {
-                    if (component is Transform) continue;
-                    componentQueue.Enqueue(component);
-                }
-            }
-            return componentQueue;
-        }
-
         static int RemoveObjectsFromContainer(in State state) {
             int removeCount = 0;
             foreach (var kv in state.scannedPaths) {
@@ -108,41 +104,39 @@ namespace JLChnToZ.NDExtensions.Editors {
             return removeCount;
         }
 
-        static Dictionary<UnityObject, UnityObject> CloneObjects(in State state) {
-            var cloneMap = new Dictionary<UnityObject, UnityObject>();
-            foreach (var obj in state.clonableObjects) {
-                var clone = UnityObject.Instantiate(obj);
-                clone.name = obj.name;
-                clone.hideFlags = obj.hideFlags;
-                cloneMap[obj] = clone;
-            }
-            return cloneMap;
-        }
-
-        static int CloneObjects(UnityObject currentContainer, in State state) {
-            int cloneCount = 0;
-            var objQueue = new Queue<UnityObject>(state.parents);
-            state.allObjects.Clear();
-            var cloneMap = CloneObjects(state);
-            while (objQueue.TryDequeue(out var obj)) {
-                if (!state.allObjects.Add(obj)) continue;
-                using var so = new SerializedObject(obj);
-                bool modified = false;
-                for (var prop = so.GetIterator(); prop.Next(true); ) {
-                    if (prop.propertyType != SerializedPropertyType.ObjectReference) continue;
-                    var value = prop.objectReferenceValue;
-                    if (value == null || !cloneMap.TryGetValue(value, out var clone)) continue;
-                    if (state.clonableObjects.Remove(value)) {
-                        objQueue.Enqueue(clone);
-                        AssetDatabase.AddObjectToAsset(clone, currentContainer);
-                        cloneCount++;
-                    }
-                    prop.objectReferenceValue = value = clone;
-                    modified = true;
+        int CloneObjects(UnityObject currentContainer, in State state) {
+            try {
+                int cloneCount = 0;
+                foreach (var obj in state.clonableObjects) {
+                    var clone = UnityObject.Instantiate(obj);
+                    clone.name = obj.name;
+                    clone.hideFlags = obj.hideFlags;
+                    tempClones[obj] = clone;
                 }
-                if (modified) so.ApplyModifiedPropertiesWithoutUndo();
+                foreach (var obj in state.parents) tempQueue.Enqueue(obj);
+                state.allObjects.Clear();
+                while (tempQueue.TryDequeue(out var obj)) {
+                    if (!state.allObjects.Add(obj)) continue;
+                    using var so = new SerializedObject(obj);
+                    bool modified = false;
+                    for (var prop = so.GetIterator(); prop.Next(true);) {
+                        if (prop.propertyType != SerializedPropertyType.ObjectReference) continue;
+                        var value = prop.objectReferenceValue;
+                        if (value == null || !tempClones.TryGetValue(value, out var clone)) continue;
+                        if (state.clonableObjects.Remove(value)) {
+                            tempQueue.Enqueue(clone);
+                            AssetDatabase.AddObjectToAsset(clone, currentContainer);
+                            cloneCount++;
+                        }
+                        prop.objectReferenceValue = value = clone;
+                        modified = true;
+                    }
+                    if (modified) so.ApplyModifiedPropertiesWithoutUndo();
+                }
+                return cloneCount;
+            } finally {
+                tempClones.Clear();
             }
-            return cloneCount;
         }
 
         struct State {

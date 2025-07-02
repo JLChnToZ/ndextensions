@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
+using nadena.dev.ndmf.animator;
+
 using UnityObject = UnityEngine.Object;
 using static UnityEngine.Object;
 
@@ -34,10 +36,10 @@ namespace JLChnToZ.NDExtensions.Editors {
             bool fixPose = false,
             Transform[] bones = null,
             OverrideHumanDescription? overrideHuman = null,
-            AnimationRelocator animationRelocator = null
+            AnimationIndex animationIndex = null
         ) {
             var processor = new HumanoidAvatarProcessor(animator, bones, assetRoot, overrideHuman) {
-                animationRelocator = animationRelocator,
+                animationIndex = animationIndex,
             };
             processor.ScanAffectedComponents();
             if (normalize) processor.Normalize(fixPose);
@@ -53,9 +55,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         public static bool GenerateTemporaryAvatar(Animator root, Transform[] bones = null, OverrideHumanDescription? overrideHuman = null) {
-            var processor = new HumanoidAvatarProcessor(root, bones, null, overrideHuman) {
-                animationRelocator = null,
-            };
+            var processor = new HumanoidAvatarProcessor(root, bones, null, overrideHuman);
             return processor.RegenerateAvatar();
         }
 

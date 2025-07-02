@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
+using nadena.dev.ndmf.animator;
 
 namespace JLChnToZ.NDExtensions.Editors {
     public static class TransformAnimationRelocator {
         public static void SetTransformPositionAndRotation(
-            this AnimationRelocator relocator,
+            this AnimationIndex src,
+            Transform root,
             Transform transform,
             Vector3 newPos,
             Quaternion newRot,
@@ -25,9 +27,11 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
             var deltaPos = newPos - oldPos;
             var deltaRot = newRot * Quaternion.Inverse(oldRot);
-            foreach (var clip in relocator.GetRelevantClipsForEdit(transform)) {
+            var path = transform.GetPath(root);
+            foreach (var clip in src.GetClipsForObjectPath(path)) {
                 EditorCurveBinding? qX = null, qY = null, qZ = null, qW = null, eulerX = null, eulerY = null, eulerZ = null;
-                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                foreach (var binding in clip.GetFloatCurveBindings()) {
+                    if (binding.type != typeof(Transform) && binding.path != path) continue;
                     switch (binding.propertyName) {
                         case "m_LocalPosition.x":
                             OffsetSingle(clip, binding, deltaPos.x);
@@ -79,39 +83,40 @@ namespace JLChnToZ.NDExtensions.Editors {
                             eulerZ = binding;
                             break;
                     }
-                if (qX.HasValue && qY.HasValue && qZ.HasValue && qW.HasValue)
-                    OffsetRotation(clip, qX.Value, qY.Value, qZ.Value, qW.Value, deltaRot);
-                else if (eulerX.HasValue && eulerY.HasValue && eulerZ.HasValue)
-                    OffsetRotation(clip, eulerX.Value, eulerY.Value, eulerZ.Value, deltaRot);
+                    if (qX.HasValue && qY.HasValue && qZ.HasValue && qW.HasValue)
+                        OffsetRotation(clip, qX.Value, qY.Value, qZ.Value, qW.Value, deltaRot);
+                    else if (eulerX.HasValue && eulerY.HasValue && eulerZ.HasValue)
+                        OffsetRotation(clip, eulerX.Value, eulerY.Value, eulerZ.Value, deltaRot);
+                }
             }
         }
 
-        static void OffsetSingle(AnimationClip clip, EditorCurveBinding binding, float offset) {
-            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+        static void OffsetSingle(VirtualClip clip, EditorCurveBinding binding, float offset) {
+            var curve = clip.GetFloatCurve(binding);
             if (curve == null) return;
             for (var i = 0; i < curve.length; i++) {
                 var key = curve[i];
                 key.value += offset;
                 curve.MoveKey(i, key);
             }
-            AnimationUtility.SetEditorCurve(clip, binding, curve);
+            clip.SetFloatCurve(binding, curve);
         }
 
         static void OffsetRotation(
-            AnimationClip clip,
+            VirtualClip clip,
             EditorCurveBinding qx,
             EditorCurveBinding qy,
             EditorCurveBinding qz,
             EditorCurveBinding qw,
             Quaternion offset
         ) {
-            var xCurve = AnimationUtility.GetEditorCurve(clip, qx);
+            var xCurve = clip.GetFloatCurve(qx);
             if (xCurve == null) return;
-            var yCurve = AnimationUtility.GetEditorCurve(clip, qy);
+            var yCurve = clip.GetFloatCurve(qy);
             if (yCurve == null) return;
-            var zCurve = AnimationUtility.GetEditorCurve(clip, qz);
+            var zCurve = clip.GetFloatCurve(qz);
             if (zCurve == null) return;
-            var wCurve = AnimationUtility.GetEditorCurve(clip, qw);
+            var wCurve = clip.GetFloatCurve(qw);
             if (wCurve == null) return;
             var times = new HashSet<float>();
             GatherTime(xCurve, times);
@@ -141,23 +146,24 @@ namespace JLChnToZ.NDExtensions.Editors {
                 newZCurve.SmoothTangents(i, 0);
                 newWCurve.SmoothTangents(i, 0);
             }
-            clip.SetCurve(qx.path, typeof(Transform), qx.propertyName, newXCurve);
-            clip.SetCurve(qy.path, typeof(Transform), qy.propertyName, newYCurve);
-            clip.SetCurve(qz.path, typeof(Transform), qz.propertyName, newZCurve);
-            clip.SetCurve(qw.path, typeof(Transform), qw.propertyName, newWCurve);
+            clip.SetFloatCurve(qx.path, typeof(Transform), qx.propertyName, newXCurve);
+            clip.SetFloatCurve(qy.path, typeof(Transform), qy.propertyName, newYCurve);
+            clip.SetFloatCurve(qz.path, typeof(Transform), qz.propertyName, newZCurve);
+            clip.SetFloatCurve(qw.path, typeof(Transform), qw.propertyName, newWCurve);
         }
+
         static void OffsetRotation(
-            AnimationClip clip,
+            VirtualClip clip,
             EditorCurveBinding eulerX,
             EditorCurveBinding eulerY,
             EditorCurveBinding eulerZ,
             Quaternion offset
         ) {
-            var xCurve = AnimationUtility.GetEditorCurve(clip, eulerX);
+            var xCurve = clip.GetFloatCurve(eulerX);
             if (xCurve == null) return;
-            var yCurve = AnimationUtility.GetEditorCurve(clip, eulerY);
+            var yCurve = clip.GetFloatCurve(eulerY);
             if (yCurve == null) return;
-            var zCurve = AnimationUtility.GetEditorCurve(clip, eulerZ);
+            var zCurve = clip.GetFloatCurve(eulerZ);
             if (zCurve == null) return;
             var times = new HashSet<float>();
             GatherTime(xCurve, times);
@@ -185,13 +191,13 @@ namespace JLChnToZ.NDExtensions.Editors {
                 newZCurve.SmoothTangents(i, 0);
                 newWCurve.SmoothTangents(i, 0);
             }
-            AnimationUtility.SetEditorCurve(clip, eulerX, null);
-            AnimationUtility.SetEditorCurve(clip, eulerY, null);
-            AnimationUtility.SetEditorCurve(clip, eulerZ, null);
-            clip.SetCurve(eulerX.path, typeof(Transform), "localRotation.x", newXCurve);
-            clip.SetCurve(eulerX.path, typeof(Transform), "localRotation.y", newYCurve);
-            clip.SetCurve(eulerX.path, typeof(Transform), "localRotation.z", newZCurve);
-            clip.SetCurve(eulerX.path, typeof(Transform), "localRotation.w", newWCurve);
+            clip.SetFloatCurve(eulerX, null);
+            clip.SetFloatCurve(eulerY, null);
+            clip.SetFloatCurve(eulerZ, null);
+            clip.SetFloatCurve(eulerX.path, typeof(Transform), "localRotation.x", newXCurve);
+            clip.SetFloatCurve(eulerX.path, typeof(Transform), "localRotation.y", newYCurve);
+            clip.SetFloatCurve(eulerX.path, typeof(Transform), "localRotation.z", newZCurve);
+            clip.SetFloatCurve(eulerX.path, typeof(Transform), "localRotation.w", newWCurve);
         }
 
         static void GatherTime(AnimationCurve curve, HashSet<float> times) {

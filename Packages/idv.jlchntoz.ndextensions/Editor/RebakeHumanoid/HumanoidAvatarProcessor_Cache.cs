@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Animations;
 using UnityEditor;
+using nadena.dev.ndmf.animator;
+
 using static UnityEngine.Object;
-using System;
 
 #if VRC_SDK_VRCSDK3
 using VRC.Dynamics;
@@ -17,7 +19,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         readonly Dictionary<Transform, Matrix4x4> movedBones = new();
         readonly HashSet<string> boneNames = new();
         readonly Dictionary<Transform, string> cachedRanamedBones = new();
-        public AnimationRelocator animationRelocator;
+        public AnimationIndex animationIndex;
 
         void ScanAffectedComponents() {
             var tempComponents = new List<Component>();
@@ -74,7 +76,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         void RestoreCachedPositions(bool restoreAnimation = true) {
             foreach (var c in cachedPositions)
-                c.Value.ApplyTo(c.Key.component, c.Key.refId, restoreAnimation ? animationRelocator : null);
+                c.Value.ApplyTo(c.Key.component, c.Key.refId, restoreAnimation ? animationIndex : null, root);
             cachedPositions.Clear();
         }
 

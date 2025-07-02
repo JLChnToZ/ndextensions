@@ -8,23 +8,22 @@ using VRC.Dynamics;
 using VRC.Dynamics.ManagedTypes;
 #endif
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.animator;
 
 using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
     public class ConstraintReducerPass : Pass<ConstraintReducerPass> {
         const Axis ALL_AXES = Axis.X | Axis.Y | Axis.Z;
-        static readonly HashSet<Transform> tempTransforms = new HashSet<Transform>();
-        static readonly Queue<Transform> tempTransformQueue = new Queue<Transform>();
-        static readonly List<Component> tempComponents = new List<Component>();
-        static readonly List<EditorCurveBinding> tempBindings = new List<EditorCurveBinding>();
-        static readonly List<AnimationCurve> tempCurves = new List<AnimationCurve>();
-        static readonly List<ObjectReferenceKeyframe[]> tempObjRefs = new List<ObjectReferenceKeyframe[]>();
+        readonly HashSet<Transform> tempTransforms = new();
+        readonly Queue<Transform> tempTransformQueue = new();
+        readonly List<Component> tempComponents = new();
 #if VRC_SDK_VRCSDK3
-        static readonly List<VRCConstraintBase> tempVRCConstraints = new List<VRCConstraintBase>();
-        static readonly Dictionary<Transform, List<VRCConstraintBase>> vrcConstraintSources = new Dictionary<Transform, List<VRCConstraintBase>>();
+        readonly List<VRCConstraintBase> tempVRCConstraints = new();
+        readonly Dictionary<Transform, LinkedList<VRCConstraintBase>> vrcConstraintSources = new();
 #endif
-        static readonly Dictionary<string, PathType> pathOfInterests = new Dictionary<string, PathType>(StringComparer.Ordinal);
+        readonly Dictionary<string, PathType> pathOfInterests = new(StringComparer.Ordinal);
+        readonly Dictionary<Transform, Transform> transferParents = new();
 
         public override string DisplayName => "Constraint Reducer";
 
@@ -33,7 +32,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (!rootTransform.TryGetComponent(out ConstraintReducer tag)) return;
             UnityObject.DestroyImmediate(tag, true);
 
-            var relocatorContext = context.Extension<AnimationRelocatorContext>();
+            var animContext = context.Extension<AnimatorServicesContext>();
 
             try {
 #if VRC_SDK_VRCSDK3
@@ -41,30 +40,31 @@ namespace JLChnToZ.NDExtensions.Editors {
                 foreach (var c in tempVRCConstraints) {
                     var transform = c.GetEffectiveTargetTransform();
                     if (!vrcConstraintSources.TryGetValue(transform, out var list))
-                        vrcConstraintSources[transform] = list = new List<VRCConstraintBase>();
-                    list.Add(c);
+                        vrcConstraintSources[transform] = list = new LinkedList<VRCConstraintBase>();
+                    list.AddLast(c);
                 }
 #endif
-                var relocator = relocatorContext.Relocator;
                 foreach (var c in rootTransform.GetComponentsInChildren<ParentConstraint>(true)) {
-                    var transform = Process(c, relocator, rootTransform);
+                    var transform = Process(animContext, c, rootTransform);
                     if (transform != null) tempTransforms.Add(transform);
                 }
 #if VRC_SDK_VRCSDK3
                 foreach (var c in tempVRCConstraints)
                     if (c != null && c is VRCParentConstraintBase pc) {
-                        var transform = Process(pc, relocator, rootTransform);
+                        var transform = Process(animContext, pc, rootTransform);
                         if (transform != null) tempTransforms.Add(transform);
                     }
                 foreach (var pb in rootTransform.GetComponentsInChildren<VRCPhysBoneBase>(true)) {
                     var pbRootTransform = pb.GetRootTransform();
                     foreach (var transform in tempTransforms)
                         if (transform.IsChildOf(pbRootTransform)) {
-                            if (pb.ignoreTransforms == null) pb.ignoreTransforms = new List<Transform>();
+                            pb.ignoreTransforms ??= new List<Transform>();
                             pb.ignoreTransforms.Add(transform);
                         }
                 }
 #endif
+                foreach (var kv in transferParents)
+                    kv.Key.SetParent(kv.Value, true);
             } finally {
                 tempTransforms.Clear();
                 tempComponents.Clear();
@@ -72,10 +72,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                 tempVRCConstraints.Clear();
                 vrcConstraintSources.Clear();
 #endif
+                transferParents.Clear();
             }
         }
 
-        static Transform Process(ParentConstraint c, AnimationRelocator relocator, Transform rootTransform) {
+        Transform Process(AnimatorServicesContext context, ParentConstraint c, Transform rootTransform) {
             if (!c.isActiveAndEnabled || !c.constraintActive ||
                 (c.rotationAxis & ALL_AXES) != ALL_AXES || (c.translationAxis & ALL_AXES) != ALL_AXES ||
                 c.sourceCount != 1 || !CheckIfOnlyComponent(c))
@@ -88,15 +89,17 @@ namespace JLChnToZ.NDExtensions.Editors {
                 !sourceTransform.gameObject.activeInHierarchy)
                 return null;
             var targetTransform = c.transform;
-            if (!CheckFulfillAndGetDrivenPath(relocator, c.GetType(), sourceTransform, targetTransform, rootTransform, out var drivenActivePath))
+            if (!CheckFulfillAndGetDrivenPath(context, c.GetType(), sourceTransform, targetTransform, rootTransform, out var drivenActiveBinding))
                 return null;
             UnityObject.DestroyImmediate(c, true);
-            MoveUnderSource(relocator, targetTransform, sourceTransform, rootTransform, drivenActivePath);
+            transferParents[targetTransform] = sourceTransform;
+            if (drivenActiveBinding.HasValue)
+                CopyBinding(context, drivenActiveBinding.Value, rootTransform, targetTransform);
             return targetTransform;
         }
 
 #if VRC_SDK_VRCSDK3
-        static Transform Process(VRCParentConstraintBase c, AnimationRelocator relocator, Transform rootTransform) {
+        Transform Process(AnimatorServicesContext context, VRCParentConstraintBase c, Transform rootTransform) {
             if (!c.isActiveAndEnabled || !c.IsActive || c.FreezeToWorld ||
                 !c.AffectsPositionX || !c.AffectsPositionY || !c.AffectsPositionZ ||
                 !c.AffectsRotationX || !c.AffectsRotationY || !c.AffectsRotationZ ||
@@ -109,16 +112,18 @@ namespace JLChnToZ.NDExtensions.Editors {
                 !sourceTransform.IsChildOf(rootTransform) ||
                 !sourceTransform.gameObject.activeInHierarchy)
                 return null;
-            if (!CheckFulfillAndGetDrivenPath(relocator, c.GetType(), sourceTransform, c.transform, rootTransform, out var drivenActivePath))
+            if (!CheckFulfillAndGetDrivenPath(context, c.GetType(), sourceTransform, c.transform, rootTransform, out var drivenActiveBinding))
                 return null;
             var targetTransform = c.GetEffectiveTargetTransform();
             UnityObject.DestroyImmediate(c, true);
-            MoveUnderSource(relocator, targetTransform, sourceTransform, rootTransform, drivenActivePath);
+            transferParents[targetTransform] = sourceTransform;
+            if (drivenActiveBinding.HasValue)
+                CopyBinding(context, drivenActiveBinding.Value, rootTransform, targetTransform);
             return targetTransform;
         }
 #endif
 
-        static bool CheckIfOnlyComponent(Component component) {
+        bool CheckIfOnlyComponent(Component component) {
             component.GetComponents(tempComponents);
             foreach (var c in tempComponents) {
                 if (c == component) continue;
@@ -133,16 +138,16 @@ namespace JLChnToZ.NDExtensions.Editors {
             return true;
         }
 
-        static bool CheckFulfillAndGetDrivenPath(
-            AnimationRelocator relocator,
+        bool CheckFulfillAndGetDrivenPath(
+            AnimatorServicesContext context,
             Type driverType,
             Transform source,
             Transform target,
             Transform root,
-            out string drivenActivePath
+            out EditorCurveBinding? drivenActiveBinding
         ) {
             try {
-                drivenActivePath = null;
+                drivenActiveBinding = null;
                 pathOfInterests[target.GetPath(root)] = PathType.Target;
                 var commonParent = root;
                 for (var c = target; c != root && c != null; c = c.parent)
@@ -163,43 +168,41 @@ namespace JLChnToZ.NDExtensions.Editors {
                         pathOfInterests[path] = PathType.ScaleDriver;
                         EnqueueScaleDriver(transform, root);
                     }
-                foreach (var clip in relocator.OriginalClips)
-                    foreach (var binding in AnimationUtility.GetCurveBindings(relocator[clip])) {
-                        var path = binding.path;
-                        if (!pathOfInterests.TryGetValue(path, out var pathType)) continue;
-                        var type = binding.type;
-                        var propName = binding.propertyName;
-                        switch (pathType) {
-                            case PathType.Target:
-                                if (type.IsAssignableFrom(driverType)) return false;
-                                goto case PathType.TargetPath;
-                            case PathType.TargetPath:
-                                if (type == typeof(GameObject) && propName == "m_IsActive") {
-                                    if (drivenActivePath == null)
-                                        drivenActivePath = path;
-                                    else if (drivenActivePath != path) {
-                                        drivenActivePath = null;
+                foreach (var kv in pathOfInterests)
+                    foreach (var clip in context.AnimationIndex.GetClipsForObjectPath(kv.Key))
+                        foreach (var binding in clip.GetFloatCurveBindings()) {
+                            if (binding.path != kv.Key) continue;
+                            switch (kv.Value) {
+                                case PathType.Target:
+                                    if (binding.type.IsAssignableFrom(driverType))
                                         return false;
+                                    goto case PathType.TargetPath;
+                                case PathType.TargetPath:
+                                    if (binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive") {
+                                        if (drivenActiveBinding.HasValue && drivenActiveBinding.Value.path != kv.Key) {
+                                            drivenActiveBinding = null;
+                                            return false;
+                                        }
+                                        drivenActiveBinding = binding;
                                     }
-                                }
-                                break;
-                            case PathType.SourceAndPath:
-                                if (type == typeof(GameObject) && propName == "m_IsActive")
-                                    return false;
-                                goto case PathType.ScaleDriver;
-                            case PathType.ScaleDriver:
-                                if (type.IsSubclassOf(typeof(Transform)) && propName.StartsWith("m_LocalScale"))
-                                    return false;
-                                break;
+                                    break;
+                                case PathType.SourceAndPath:
+                                    if (binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive")
+                                        return false;
+                                    goto case PathType.ScaleDriver;
+                                case PathType.ScaleDriver:
+                                    if (binding.type.IsSubclassOf(typeof(Transform)) && binding.propertyName.StartsWith("m_LocalScale"))
+                                        return false;
+                                    break;
+                            }
                         }
-                    }
                 return true;
             } finally {
                 pathOfInterests.Clear();
             }
         }
 
-        static void EnqueueScaleDriver(Transform transform, Transform root) {
+        void EnqueueScaleDriver(Transform transform, Transform root) {
             if (transform.TryGetComponent(out ScaleConstraint sc))
                 for (int i = 0, sourceCount = sc.sourceCount; i < sourceCount; i++) {
                     var sourceTransform = sc.GetSource(i).sourceTransform;
@@ -218,90 +221,13 @@ namespace JLChnToZ.NDExtensions.Editors {
 #endif
         }
 
-        static void MoveUnderSource(
-            AnimationRelocator relocator,
-            Transform target,
-            Transform dest,
-            Transform root,
-            string drivenActivePath
-        ) {
-            if (target == null || dest == null || target == dest || target.parent == dest) return;
-            var oldPath = target.GetPath(root);
-            target.name = GameObjectUtility.GetUniqueNameForSibling(dest, target.name);
-            target.SetParent(dest, true);
-            var newPath = target.GetPath(root);
-            foreach (var clip in relocator.OriginalClips) {
-                var newClip = relocator[clip];
-                bool isCloned = newClip != clip;
-                foreach (var binding in AnimationUtility.GetCurveBindings(newClip)) {
-                    if (!ShouldRemapBinding(in binding, out var newBinding, oldPath, newPath, drivenActivePath, out var keepOld)) continue;
-                    if (!keepOld) {
-                        tempBindings.Add(binding);
-                        tempCurves.Add(null);
-                    }
-                    var curve = AnimationUtility.GetEditorCurve(newClip, binding);
-                    if (curve != null) {
-                        tempBindings.Add(newBinding);
-                        tempCurves.Add(curve);
-                    }
-                }
-                if (tempBindings.Count > 0) {
-                    if (!isCloned) {
-                        newClip = relocator.GetClone(newClip);
-                        isCloned = true;
-                    }
-                    AnimationUtility.SetEditorCurves(newClip, tempBindings.ToArray(), tempCurves.ToArray());
-                    tempBindings.Clear();
-                    tempCurves.Clear();
-                }
-                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(newClip)) {
-                    if (!ShouldRemapBinding(in binding, out var newBinding, oldPath, newPath, drivenActivePath, out var keepOld)) continue;
-                    if (!keepOld) {
-                        tempBindings.Add(binding);
-                        tempObjRefs.Add(null);
-                    }
-                    var objRef = AnimationUtility.GetObjectReferenceCurve(newClip, binding);
-                    if (objRef != null && objRef.Length > 0) {
-                        tempBindings.Add(newBinding);
-                        tempObjRefs.Add(objRef);
-                    }
-                }
-                if (tempBindings.Count > 0) {
-                    if (!isCloned) newClip = relocator.GetClone(newClip);
-                    AnimationUtility.SetObjectReferenceCurves(newClip, tempBindings.ToArray(), tempObjRefs.ToArray());
-                    tempBindings.Clear();
-                    tempObjRefs.Clear();
-                }
+        void CopyBinding(AnimatorServicesContext context, EditorCurveBinding drivenActiveBinding, Transform root, Transform target) {
+            var targetBinding = drivenActiveBinding;
+            targetBinding.path = target.GetPath(root);
+            foreach (var clip in context.AnimationIndex.GetClipsForBinding(drivenActiveBinding)) {
+                var curve = clip.GetFloatCurve(drivenActiveBinding);
+                if (curve != null) clip.SetFloatCurve(targetBinding, curve);
             }
-        }
-
-        static bool ShouldRemapBinding(
-            in EditorCurveBinding binding,
-            out EditorCurveBinding newBinding,
-            string oldPath,
-            string newPath,
-            string drivenActivePath,
-            out bool keepOld
-        ) {
-            newBinding = binding;
-            var path = binding.path;
-            if (path == drivenActivePath && binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive") {
-                newBinding.path = newPath;
-                keepOld = true;
-                return true;
-            }
-            if (path == oldPath) {
-                newBinding.path = newPath;
-                keepOld = false;
-                return true;
-            }
-            if (path.Length > oldPath.Length && path.StartsWith(oldPath) && path[oldPath.Length] == '/') {
-                newBinding.path = newPath + path[oldPath.Length..];
-                keepOld = false;
-                return true;
-            }
-            keepOld = true;
-            return false;
         }
 
         enum PathType {

@@ -1,4 +1,5 @@
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.animator;
 using JLChnToZ.NDExtensions.Editors;
 
 [assembly: ExportsPlugin(typeof(NDExtensionPlugin))]
@@ -17,15 +18,21 @@ namespace JLChnToZ.NDExtensions.Editors {
             );
             InPhase(BuildPhase.Transforming)
             .AfterPlugin("nadena.dev.modular-avatar")
-            .WithRequiredExtensions(
-                new[] { typeof(AnimationRelocatorContext), typeof(RebakeHumanoidContext) },
-                seq => seq.Run(RebakeHumanoidPass.Instance)
+            .WithRequiredExtension(
+                typeof(AnimatorServicesContext),
+                seq => {
+                    seq.WithRequiredExtension(
+                        typeof(RebakeHumanoidContext),
+                        seq2 => seq2.Run(RebakeHumanoidPass.Instance)
+                    );
+                    seq.Run(FeatureMaintainerPass.Instance);
+                }
             );
             InPhase(BuildPhase.Optimizing)
             .AfterPlugin("nadena.dev.modular-avatar")
             .BeforePlugin("com.anatawa12.avatar-optimizer")
             .WithRequiredExtension(
-                typeof(AnimationRelocatorContext),
+                typeof(AnimatorServicesContext),
                 seq => seq.Run(ConstraintReducerPass.Instance)
             );
             InPhase(BuildPhase.Optimizing)

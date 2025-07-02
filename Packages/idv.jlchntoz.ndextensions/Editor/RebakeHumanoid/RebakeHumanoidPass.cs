@@ -3,6 +3,8 @@ using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 #endif
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.animator;
+
 using static UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
@@ -13,9 +15,8 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (!ctx.AvatarRootObject.TryGetComponent(out RebakeHumanoid declaration)) return;
             if (!declaration.@override) declaration.RefetchBones(); // Force refetch bones
             var rebakeContext = ctx.Extension<RebakeHumanoidContext>();
-            var relocatorContext = ctx.Extension<AnimationRelocatorContext>();
+            var animContext = ctx.Extension<AnimatorServicesContext>();
             var animator = declaration.Animator;
-            relocatorContext.GetAnimationController(animator.runtimeAnimatorController);
 #if VRC_SDK_VRCSDK3
             var eyePosition = declaration.adjustViewpoint ? MeasureEyePosition(declaration) : Vector3.zero;
 #endif
@@ -43,7 +44,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 declaration.fixPose,
                 declaration.@override ? declaration.boneMapping : null,
                 declaration.overrideHuman,
-                relocatorContext.Relocator
+                animContext.AnimationIndex
             );
 #if VRC_SDK_VRCSDK3
             if (declaration.TryGetComponent(out VRCAvatarDescriptor vrcaDesc)) {
@@ -53,7 +54,6 @@ namespace JLChnToZ.NDExtensions.Editors {
                     FixEyeRotation(vrcaDesc, declaration);
             }
 #endif
-            animator.runtimeAnimatorController = relocatorContext.GetRelocatedController(animator.runtimeAnimatorController);
             DestroyImmediate(declaration);
         }
 

@@ -1,7 +1,7 @@
 using UnityEngine;
 
 namespace JLChnToZ.NDExtensions {
-    [AddComponentMenu("JLChnToZ/Non-Destructive Extensions/Deep Cleanup")]
+    [AddComponentMenu("JLChnToZ/Non-Destructive Extensions/Deep Cleanup (Experimental)")]
     public sealed partial class DeepCleanup : MonoBehaviour { }
 
 #if VRC_SDK_VRCSDK3

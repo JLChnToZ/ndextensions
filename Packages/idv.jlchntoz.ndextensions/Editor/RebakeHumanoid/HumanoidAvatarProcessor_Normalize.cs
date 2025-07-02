@@ -55,34 +55,53 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void FixPose() {
-            for (var bone = HumanBodyBones.LeftUpperLeg; bone <= HumanBodyBones.RightLowerArm; bone++)
+            for (var bone = HumanBodyBones.LeftUpperLeg; bone < HumanBodyBones.LastBone; bone++)
                 FixPose(bone);
         }
 
         void FixPose(HumanBodyBones bone) {
-            if (bone < HumanBodyBones.LeftUpperLeg || bone > HumanBodyBones.RightLowerArm) return;
+            if (!GetBoneNormalizedFacing(bone, out var facing)) return;
             var transform = bones[(int)bone];
             if (transform == null) return;
-            Vector3 orgV = Vector3.zero, newV = Vector3.zero;
+            Vector3 orgV = Vector3.zero;
             int childCount = 0;
-            for (int b = (int)bone + 1; b <= (int)HumanBodyBones.RightLowerArm; b++) {
+            for (int b = (int)bone + 1; b < (int)HumanBodyBones.LastBone; b++) {
                 if (HumanTrait.GetParentBone(b) != (int)bone) continue;
                 var child = bones[b];
                 if (child == null) continue;
                 orgV += (child.position - transform.position).normalized;
                 childCount++;
             }
-            if (childCount > 0) {
-                orgV /= childCount;
-                int longestAxis = 0;
-                float sign = Mathf.Sign(orgV.x);
-                for (int i = 1; i < 3; i++)
-                    if (Mathf.Abs(orgV[i]) > Mathf.Abs(orgV[longestAxis])) {
-                        longestAxis = i;
-                        sign = Mathf.Sign(orgV[i]);
-                    }
-                newV[longestAxis] = sign;
-                transform.rotation = Quaternion.FromToRotation(orgV, newV) * transform.rotation;
+            if (childCount > 0) transform.rotation = Quaternion.FromToRotation(orgV / childCount, facing) * transform.rotation;
+        }
+
+        static bool GetBoneNormalizedFacing(HumanBodyBones bone, out Vector3 facing) {
+            switch (bone) {
+                case HumanBodyBones.LeftUpperLeg:
+                case HumanBodyBones.RightUpperLeg:
+                case HumanBodyBones.LeftLowerLeg:
+                case HumanBodyBones.RightLowerLeg:
+                    facing = Vector3.down;
+                    return true;
+                case HumanBodyBones.Spine:
+                case HumanBodyBones.Chest:
+                case HumanBodyBones.UpperChest:
+                case HumanBodyBones.Neck:
+                    facing = Vector3.up;
+                    return true;
+                case HumanBodyBones.LeftShoulder:
+                case HumanBodyBones.LeftUpperArm:
+                case HumanBodyBones.LeftLowerArm:
+                    facing = Vector3.left;
+                    return true;
+                case HumanBodyBones.RightShoulder:
+                case HumanBodyBones.RightUpperArm:
+                case HumanBodyBones.RightLowerArm:
+                    facing = Vector3.right;
+                    return true;
+                default:
+                    facing = default;
+                    return false;
             }
         }
 

@@ -35,7 +35,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
             try {
 #if VRC_SDK_VRCSDK3
-                rootTransform.GetComponentsInChildren(true, tempVRCConstraints);
+                rootTransform.GetBuildableComponentsInChildren(tempVRCConstraints);
                 foreach (var c in tempVRCConstraints) {
                     var transform = c.GetEffectiveTargetTransform();
                     if (!vrcConstraintSources.TryGetValue(transform, out var list))
@@ -43,13 +43,13 @@ namespace JLChnToZ.NDExtensions.Editors {
                     list.AddLast(c);
                 }
 #endif
-                foreach (var c in rootTransform.GetComponentsInChildren<ParentConstraint>(true))
+                foreach (var c in rootTransform.GetBuildableComponentsInChildren<ParentConstraint>())
                     Process(animContext, c, rootTransform);
 #if VRC_SDK_VRCSDK3
                 foreach (var c in tempVRCConstraints)
                     if (c != null && c is VRCParentConstraintBase pc)
                         Process(animContext, pc, rootTransform);
-                foreach (var pb in rootTransform.GetComponentsInChildren<VRCPhysBoneBase>(true)) {
+                foreach (var pb in rootTransform.GetBuildableComponentsInChildren<VRCPhysBoneBase>()) {
                     var pbRootTransform = pb.GetRootTransform();
                     foreach (var kv in transferParents)
                         if (kv.Value == pbRootTransform || kv.Value.IsChildOf(pbRootTransform)) {

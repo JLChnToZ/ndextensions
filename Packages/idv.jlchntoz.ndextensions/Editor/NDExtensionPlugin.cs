@@ -35,10 +35,6 @@ namespace JLChnToZ.NDExtensions.Editors {
                 typeof(AnimatorServicesContext),
                 seq => seq.Run(ConstraintReducerPass.Instance)
             );
-            InPhase(BuildPhase.Optimizing)
-            .AfterPlugin("com.anatawa12.avatar-optimizer")
-            .AfterPlugin("nadena.dev.modular-avatar")
-            .Run(DeepCleanupPass.Instance);
         }
     }
 }

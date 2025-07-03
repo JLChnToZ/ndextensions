@@ -24,9 +24,8 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void FixParticleSystems(BuildContext context, AnimatorServicesContext animContext) {
-#if VRC_SDK_VRCSDK3
             var bindings = new List<(EditorCurveBinding, float)>();
-            foreach (var ps in context.AvatarRootTransform.GetComponentsInChildren<ParticleSystem>(true)) {
+            foreach (var ps in context.AvatarRootTransform.GetBuildableComponentsInChildren<ParticleSystem>()) {
                 var path = ps.GetPath(context.AvatarRootTransform);
                 var binding = EditorCurveBinding.FloatCurve(path, typeof(ParticleSystem), "CollisionModule.colliderForce");
                 if (animContext.AnimationIndex.GetClipsForBinding(binding).Any()) continue;
@@ -42,7 +41,20 @@ namespace JLChnToZ.NDExtensions.Editors {
             fixerClip ??= VirtualClip.Create("Fixer");
             foreach (var (binding, value) in bindings)
                 fixerClip.SetFloatCurve(binding, AnimationCurve.Constant(0, 0.1F, value));
-#endif
+        }
+
+        void FixCameraEnable(BuildContext context, AnimatorServicesContext animContext) {
+            var bindings = new List<EditorCurveBinding>();
+            foreach (var cam in context.AvatarRootTransform.GetBuildableComponentsInChildren<Camera>()) {
+                var path = cam.GetPath(context.AvatarRootTransform);
+                var binding = EditorCurveBinding.FloatCurve(path, typeof(Camera), "enabled");
+                if (animContext.AnimationIndex.GetClipsForBinding(binding).Any()) continue;
+                bindings.Add(binding);
+            }
+            if (bindings.Count == 0) return;
+            fixerClip ??= VirtualClip.Create("Fixer");
+            foreach (var binding in bindings)
+                fixerClip.SetFloatCurve(binding, AnimationCurve.Constant(0, 0.1F, 1));
         }
     }
 }

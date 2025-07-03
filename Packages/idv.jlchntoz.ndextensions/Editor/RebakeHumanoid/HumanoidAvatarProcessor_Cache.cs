@@ -108,7 +108,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void UpdateBindposes() {
-            foreach (var skinnedMeshRenderer in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) {
+            foreach (var skinnedMeshRenderer in root.GetBuildableComponentsInChildren<SkinnedMeshRenderer>()) {
                 var orgMesh = skinnedMeshRenderer.sharedMesh;
                 if (orgMesh == null) continue;
                 var bones = skinnedMeshRenderer.bones;

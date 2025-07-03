@@ -17,19 +17,16 @@ namespace JLChnToZ.NDExtensions.Editors {
             var temp = new List<KeyValuePair<AnimationClip, AnimationClip>>();
             while (overrideController != null) {
                 overrideController.GetOverrides(temp);
-                foreach (var map in temp) {
-                    if (map.Key == null || map.Value == null) continue;
-                    if (clipOverrides.TryGetValue(map.Value, out var value2)) {
-                        clipOverrides.Remove(map.Value);
-                        clipOverrides.Add(map.Key, value2);
-                    } else
-                        clipOverrides[map.Key] = map.Value;
-                }
-                if (overrideController.runtimeAnimatorController is AnimatorController baseController) {
-                    controller = baseController;
+                foreach (var map in temp)
+                    if (map.Key != null && map.Value != null &&
+                        !clipOverrides.ContainsKey(map.Key))
+                        clipOverrides.Add(map.Key, map.Value);
+                var baseController = overrideController.runtimeAnimatorController;
+                if (baseController is AnimatorController baseSrcController) {
+                    controller = baseSrcController;
                     break;
                 }
-                overrideController = overrideController.runtimeAnimatorController as AnimatorOverrideController;
+                overrideController = baseController as AnimatorOverrideController;
             }
         }
 

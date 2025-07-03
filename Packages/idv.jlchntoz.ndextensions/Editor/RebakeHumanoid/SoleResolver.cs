@@ -18,11 +18,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             resolver.AddBoneOfInterest(HumanBodyBones.RightToes);
             resolver.AddBoneOfInterest(HumanBodyBones.LeftFoot);
             resolver.AddBoneOfInterest(HumanBodyBones.RightFoot);
-            if (resolver.boneOfInterest.Count > 0) {
-                if (skins == null) skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-                foreach (var renderer in skins)
+            if (resolver.boneOfInterest.Count > 0)
+                foreach (var renderer in (skins as IEnumerable<SkinnedMeshRenderer>) ?? root.GetBuildableComponentsInChildren<SkinnedMeshRenderer>())
                     resolver.AddRendererOfInterest(renderer);
-            }
             return resolver.minOffset;
         }
 

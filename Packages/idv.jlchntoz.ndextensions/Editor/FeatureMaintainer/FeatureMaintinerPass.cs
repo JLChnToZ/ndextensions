@@ -18,8 +18,10 @@ namespace JLChnToZ.NDExtensions.Editors {
 #if VRC_SDK_VRCSDK3
             var extContext = context.Extension<AnimatorServicesContext>();
             FixParticleSystems(context, extContext);
+            FixCameraEnable(context, extContext);
             if (fixerClip != null && extContext.ControllerContext.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
                 fx.AddLayer(LayerPriority.Default, fixerClip.Name).StateMachine.AddState(fixerClip.Name, fixerClip);
+            fixerClip = null;
 #endif
         }
 

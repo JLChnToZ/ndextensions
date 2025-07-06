@@ -4,11 +4,13 @@ using UnityEngine;
 namespace JLChnToZ.NDExtensions.Editors {
     public partial class HumanoidAvatarProcessor {
         #region Normalize Bone Rotation
-        void Normalize(bool fixPose = false) {
+        void Normalize(FixPoseMode fixPose = FixPoseMode.NoFix) {
+            bool isFixTPose = fixPose == FixPoseMode.FixTPose;
             for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++) {
                 Normalize(bone);
-                if (fixPose) FixPose(bone);
+                if (isFixTPose) FixPose(bone);
             }
+            if (!isFixTPose) FixPose(fixPose);
         }
 
         void NormalizeLeg() {
@@ -54,9 +56,22 @@ namespace JLChnToZ.NDExtensions.Editors {
             RestoreCachedPositions();
         }
 
-        void FixPose() {
-            for (var bone = HumanBodyBones.LeftUpperLeg; bone < HumanBodyBones.LastBone; bone++)
-                FixPose(bone);
+        void FixPose(FixPoseMode fixPose) {
+            switch (fixPose) {
+                case FixPoseMode.NoFix: return;
+                case FixPoseMode.FixTPose:
+                    for (var bone = HumanBodyBones.LeftUpperLeg; bone < HumanBodyBones.LastBone; bone++)
+                        FixPose(bone);
+                    return;
+            }
+            var avatar = animator.avatar;
+            if (avatar == null) return;
+            switch (fixPose) {
+                case FixPoseMode.FromExistingAvatar: avatar.ApplyTPose(root, true, false); break;
+                case FixPoseMode.FromExistingAvatarWithScale: avatar.ApplyTPose(root, true, true); break;
+                case FixPoseMode.FromExistingAvatarAggressive: avatar.ApplyTPose(root, false, false); break;
+                case FixPoseMode.FromExistingAvatarAggressiveWithScale: avatar.ApplyTPose(root, false, true); break;
+            }
         }
 
         void FixPose(HumanBodyBones bone) {

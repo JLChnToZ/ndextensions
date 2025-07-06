@@ -2,12 +2,17 @@ using System;
 using System.Reflection;
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace JLChnToZ.NDExtensions {
     public static class MecanimUtils {
         delegate Dictionary<int, Transform> MapBones(Transform root, Dictionary<Transform, bool> validBones);
+        static readonly FieldInfo parentNameField = typeof(SkeletonBone).GetField("parentName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
         static string[] humanNames, muscleNames;
         static MapBones mapBones;
+
         public static string[] HumanBoneNames => humanNames;
 
         public static string[] MuscleNames => muscleNames;
@@ -139,5 +144,44 @@ namespace JLChnToZ.NDExtensions {
 
         public static HumanDescription GetHumanDescriptionOrDefault(this Avatar avatar) =>
             avatar == null ? defaultHumanDescription : avatar.humanDescription;
+
+        public static void ApplyTPose(this Avatar avatar, Transform root, bool humanBoneOnly = true, bool applyScale = true, bool undo = false) {
+#if UNITY_EDITOR
+            if (undo && EditorApplication.isPlayingOrWillChangePlaymode) undo = false;
+#endif
+            if (avatar == null || root == null) return;
+            var walker = new Queue<Transform>();
+            HashSet<Transform> whiteList = null;
+            if (humanBoneOnly && avatar.isHuman) {
+                var bones = new Transform[HumanTrait.BoneCount];
+                FetchHumanoidBodyBones(avatar, root, bones, walker);
+                whiteList = new HashSet<Transform>(bones.Length);
+                foreach (var bone in bones)
+                    if (bone != null)
+                        whiteList.Add(bone);
+            }
+            var humanDesc = avatar.humanDescription;
+            var skeletonMapping = new Dictionary<(string bone, string parent), SkeletonBone>();
+            foreach (var skeleton in humanDesc.skeleton) {
+                if (string.IsNullOrEmpty(skeleton.name)) continue;
+                skeletonMapping[(skeleton.name, parentNameField.GetValue(skeleton) as string ?? "")] = skeleton;
+            }
+            foreach (Transform child in root) walker.Enqueue(child);
+            while (walker.TryDequeue(out var current)) {
+                foreach (Transform child in current) walker.Enqueue(child);
+                if ((whiteList != null && !whiteList.Contains(current)) ||
+                    !(skeletonMapping.TryGetValue((current.name, current.parent.name), out var skeletonBone) ||
+                    skeletonMapping.TryGetValue((current.name, ""), out skeletonBone)))
+                    continue;
+#if UNITY_EDITOR
+                if (undo) Undo.RecordObject(current, "Apply T-Pose");
+#endif
+                current.SetLocalPositionAndRotation(skeletonBone.position, skeletonBone.rotation);
+                if (applyScale) current.localScale = skeletonBone.scale;
+            }
+#if UNITY_EDITOR
+            if (undo) Undo.CollapseUndoOperations(Undo.GetCurrentGroup());
+#endif
+        }
     }
 }

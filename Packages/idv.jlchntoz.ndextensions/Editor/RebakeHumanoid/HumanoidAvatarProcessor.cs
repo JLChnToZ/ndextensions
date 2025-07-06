@@ -33,7 +33,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             UnityObject assetRoot,
             bool normalize = false,
             bool fixCrossLeg = false,
-            bool fixPose = false,
+            FixPoseMode fixPose = FixPoseMode.NoFix,
             Transform[] bones = null,
             OverrideHumanDescription? overrideHuman = null,
             AnimationIndex animationIndex = null
@@ -45,7 +45,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (normalize) processor.Normalize(fixPose);
             else {
                 if (fixCrossLeg) processor.NormalizeLeg();
-                if (fixPose) processor.FixPose();
+                processor.FixPose(fixPose);
             }
             processor.FixArmatureRoot();
             processor.UpdateBindposes();

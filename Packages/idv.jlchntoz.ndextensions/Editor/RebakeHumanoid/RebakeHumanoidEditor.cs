@@ -9,6 +9,7 @@ namespace JLChnToZ.NDExtensions.Editors {
     public class RebakeHumanoidEditor : Editor {
         static readonly GUILayoutOption[]
             defaultLayout = null,
+            noExpand = new[] { GUILayout.ExpandWidth(false) },
             width20 = new[] { GUILayout.Width(20) },
             width50 = new[] { GUILayout.Width(50) },
             singleLineHeight = new[] { GUILayout.Height(EditorGUIUtility.singleLineHeight) };
@@ -20,7 +21,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         static Vector3Int[] muscleIndeces;
         static HumanLimit[] defaultHumanLimits;
         static string[] boneNames;
-        SerializedProperty fixPoseProp;
+        SerializedProperty fixPoseModeProp;
         SerializedProperty fixBoneOrientationProp;
         SerializedProperty fixCrossLegsProp;
         SerializedProperty floorAdjustmentProp;
@@ -46,7 +47,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         [NonSerialized] static Transform[] boneCache;
 
         void OnEnable() {
-            fixPoseProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixPose));
+            fixPoseModeProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixPoseMode));
             fixBoneOrientationProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixBoneOrientation));
             fixCrossLegsProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixCrossLegs));
             floorAdjustmentProp = serializedObject.FindProperty(nameof(RebakeHumanoid.floorAdjustment));
@@ -106,8 +107,19 @@ namespace JLChnToZ.NDExtensions.Editors {
             I18NEditor.DrawLocaleField();
             EditorGUILayout.Space();
             serializedObject.Update();
-            EditorGUILayout.HelpBox(i18n["RebakeHumanoid:note"], MessageType.Info);
-            EditorGUILayout.PropertyField(fixPoseProp, i18n.GetContent("RebakeHumanoid.fixPose"), defaultLayout);
+            Avatar avatar = null;
+            bool hasValidAvatar = (!animator && !(target as Component).TryGetComponent(out animator)) ||
+                ((avatar = animator.avatar) != null && avatar.isHuman);
+            i18n.EnumFieldLayout(fixPoseModeProp, "RebakeHumanoid.fixPoseMode");
+            var fixPoseMode = (FixPoseMode)fixPoseModeProp.intValue;
+            if (fixPoseMode >= FixPoseMode.FromExistingAvatar && !hasValidAvatar) {
+                fixPoseModeProp.intValue = (int)FixPoseMode.NoFix;
+                fixPoseMode = FixPoseMode.NoFix;
+            }
+            EditorGUILayout.HelpBox(i18n[$"FixPoseMode.{fixPoseMode}:note"], MessageType.Info);
+            if (hasValidAvatar)
+                using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+                    DrawRestoreBoneUtils(avatar);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.HEIGHT_ADJUST"), EditorStyles.boldLabel, defaultLayout);
 #if VRC_SDK_VRCSDK3
@@ -133,9 +145,6 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.PropertyField(fixCrossLegsProp, i18n.GetContent("RebakeHumanoid.fixCrossLegs"), defaultLayout);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid.ADVANCED"), EditorStyles.boldLabel, defaultLayout);
-            Avatar avatar = null;
-            bool hasValidAvatar = (!animator && !(target as Component).TryGetComponent(out animator)) ||
-                ((avatar = animator.avatar) != null && avatar.isHuman);
             using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
                 i18n.EnumFieldLayout(overrideHumanModeProp, "OverrideHumanDescription.mode");
                 if (changeCheck.changed) {
@@ -301,6 +310,22 @@ namespace JLChnToZ.NDExtensions.Editors {
                     maxProp.vector3Value = maxValues;
                     centerProp.vector3Value = restValues;
                 }
+            }
+        }
+
+        void DrawRestoreBoneUtils(Avatar avatar) {
+            EditorGUILayout.LabelField(i18n.GetContent("RebakeHumanoid:RESTORE_TPOSE"), EditorStyles.boldLabel, defaultLayout);
+            using (new EditorGUILayout.HorizontalScope(defaultLayout)) {
+                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:RestoreTPoseHumanoid"), EditorStyles.miniButtonLeft, defaultLayout))
+                    avatar.ApplyTPose((target as Component).transform, true, false, true);
+                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:RestoreWithScale"), EditorStyles.miniButtonRight, noExpand))
+                    avatar.ApplyTPose((target as Component).transform, true, true, true);
+            }
+            using (new EditorGUILayout.HorizontalScope(defaultLayout)) {
+                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:RestoreTPoseAll"), EditorStyles.miniButtonLeft, defaultLayout))
+                    avatar.ApplyTPose((target as Component).transform, false, false, true);
+                if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:RestoreWithScale"), EditorStyles.miniButtonRight, noExpand))
+                    avatar.ApplyTPose((target as Component).transform, false, true, true);
             }
         }
 

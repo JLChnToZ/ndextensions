@@ -8,9 +8,9 @@ namespace JLChnToZ.NDExtensions {
     [RequireComponent(typeof(Animator))]
     [DisallowMultipleComponent]
     public sealed partial class RebakeHumanoid : MonoBehaviour, IBoneTransformProvider {
-        public bool fixPose;
+        [Obsolete, SerializeField, HideInInspector] bool autoCalculateFootOffset, fixHoverFeet, fixPose;
+        public FixPoseMode fixPoseMode;
         public Vector3 manualOffset;
-        [Obsolete, SerializeField, HideInInspector] bool autoCalculateFootOffset, fixHoverFeet;
         public FloorAdjustmentMode floorAdjustment;
         public SkinnedMeshRenderer rendererWithBareFeet;
         public bool fixBoneOrientation;
@@ -49,8 +49,21 @@ namespace JLChnToZ.NDExtensions {
                 floorAdjustment = FloorAdjustmentMode.FixSolesStuck;
                 autoCalculateFootOffset = false;
             }
+            if (fixPose) {
+                fixPoseMode = FixPoseMode.FixTPose;
+                fixPose = false;
+            }
 #pragma warning restore 0612
         }
+    }
+
+    public enum FixPoseMode {
+        NoFix,
+        FixTPose,
+        FromExistingAvatar,
+        FromExistingAvatarWithScale,
+        FromExistingAvatarAggressive,
+        FromExistingAvatarAggressiveWithScale,
     }
 
     public enum FloorAdjustmentMode {

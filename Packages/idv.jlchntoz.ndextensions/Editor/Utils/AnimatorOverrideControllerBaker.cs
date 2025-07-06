@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
@@ -94,7 +95,25 @@ namespace JLChnToZ.NDExtensions.Editors {
             return controller;
         }
 
+        public void SaveToAsset(string path) {
+            if (string.IsNullOrEmpty(path)) throw new ArgumentNullException(nameof(path));
+            if (!AssetDatabase.Contains(controller))
+                AssetDatabase.CreateAsset(controller, path);
+            else {
+                var existingPath = AssetDatabase.GetAssetPath(controller);
+                if (string.IsNullOrEmpty(existingPath) || existingPath != path)
+                    throw new ArgumentException($"The controller is already an asset at {existingPath}, cannot save to {path}.");
+            }
+            SaveToAsset(controller);
+        }
+
         public void SaveToAsset(UnityObject asset) {
+            if (asset == null) {
+                var path = AssetDatabase.GetAssetPath(controller);
+                if (string.IsNullOrEmpty(path))
+                    throw new ArgumentException("Cannot save to asset, the controller is not an asset. Please specify an asset.");
+                asset = AssetDatabase.LoadMainAssetAtPath(path);
+            }
             foreach (var createdObject in createdObjects)
                 if (!AssetDatabase.Contains(createdObject))
                     AssetDatabase.AddObjectToAsset(createdObject, asset);

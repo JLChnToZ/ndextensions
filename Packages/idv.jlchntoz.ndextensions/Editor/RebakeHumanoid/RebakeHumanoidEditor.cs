@@ -6,14 +6,13 @@ using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;
 
 namespace JLChnToZ.NDExtensions.Editors {
     [CustomEditor(typeof(RebakeHumanoid))]
-    public class RebakeHumanoidEditor : Editor {
+    public class RebakeHumanoidEditor : TagComponentEditor {
         static readonly GUILayoutOption[]
             defaultLayout = null,
             noExpand = new[] { GUILayout.ExpandWidth(false) },
             width20 = new[] { GUILayout.Width(20) },
             width50 = new[] { GUILayout.Width(50) },
             singleLineHeight = new[] { GUILayout.Height(EditorGUIUtility.singleLineHeight) };
-        static I18N i18n;
         static string tempAvatarPath;
         static readonly GUIContent tempContent = new();
         static readonly Vector3Int emptyMuscleIndex = new(-1, -1, -1);
@@ -46,7 +45,8 @@ namespace JLChnToZ.NDExtensions.Editors {
         Animator animator;
         [NonSerialized] static Transform[] boneCache;
 
-        void OnEnable() {
+        protected override void OnEnable() {
+            base.OnEnable();
             fixPoseModeProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixPoseMode));
             fixBoneOrientationProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixBoneOrientation));
             fixCrossLegsProp = serializedObject.FindProperty(nameof(RebakeHumanoid.fixCrossLegs));
@@ -102,10 +102,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             customLimitsIconContent.tooltip = i18n["RebakeHumanoid.boneMapping:customLimits"];
         }
 
-        public override void OnInspectorGUI() {
-            if (i18n == null) i18n = I18N.Instance;
-            I18NEditor.DrawLocaleField();
-            EditorGUILayout.Space();
+        protected override void DrawFields() {
             serializedObject.Update();
             Avatar avatar = null;
             bool hasValidAvatar = (!animator && !(target as Component).TryGetComponent(out animator)) ||

@@ -67,7 +67,8 @@
     "RebakeHumanoid.boneMapping:error_childof": "This bone must be a child of {0} ({1}).",
     "RebakeHumanoid.boneMapping:generateTemp": "Generate Temporary Avatar",
     "RebakeHumanoid.boneMapping:generateTemp:note": "If VRCSDK (or other components) complains invalid avatar such as missing mapping after overriding, click above button to generate a temporary one for passing initial check.",
-    "DeepCleanup:note": "This will trim away all unused assets from the NDMF asset container, also clones referenced assets from elsewhere to the container to avoid packing with \"ghost assets\"."
+    "ConstraintReducer:note": "This will reduce the unnecessary constraints if moving the transform around hierarchy already has the same effect.",
+    "FeatureMaintainer:note": "This will auto re-enable some components/properties that turned off by VRChat by default."
   },
   "zh-hant": {
     "_alias": ["zh-tw", "zh-hk", "zh-mo"],
@@ -138,7 +139,8 @@
     "RebakeHumanoid.boneMapping:error_childof": "這個骨骼必須是 {0}（{1}）的子物件。",
     "RebakeHumanoid.boneMapping:generateTemp": "生成臨時人形骨架定義",
     "RebakeHumanoid.boneMapping:generateTemp:note": "如果 VRCSDK（或其他元件）因為缺少人形骨架映射之類的原因拒絕構建/無法正常運作，請單擊上面的按鈕生成一個臨時的定義以通過初始檢查。",
-    "DeepCleanup:note": "這將從 NDMF 資源容器中抽走所有沒有任何引用的資源，也會將放在其他地方但有被引用的資源複製到容器中以避免打包時包含「幽靈資源」。"
+    "ConstraintReducer:note": "這將減少不必要的約束，如果移動變換周圍的層級已經有相同的效果。",
+    "FeatureMaintainer:note": "這將自動重新啟用預設會被 VRChat 關掉的一些元件和屬性。"
   },
   "zh-hans": {
     "_alias": ["zh-cn", "zh-sg"],
@@ -209,7 +211,8 @@
     "RebakeHumanoid.boneMapping:error_childof": "这个骨骼必须是 {0}（{1}）的子物件。",
     "RebakeHumanoid.boneMapping:generateTemp": "生成临时人形骨架定义",
     "RebakeHumanoid.boneMapping:generateTemp:note": "如果 VRCSDK（或其他组件）因为缺少人形骨架映射之类的原因拒绝构建/无法正常运作，请单击上面的按钮生成一个临时的定义以通过初始检查。",
-    "DeepCleanup:note": "这将从 NDMF 资源容器中抽走所有没有任何引用的资源，也会将放在其他地方但有被引用的资源复制到容器中以避免打包时包含「幽灵资源」。"
+    "ConstraintReducer:note": "这将减少不必要的约束，如果移动变换周围的层级已经有相同的效果。",
+    "FeatureMaintainer:note": "这将自动重新启用默认会被 VRChat 关闭的一些组件和属性。"
   },
   "ja": {
     "_name": "日本語",
@@ -280,7 +283,8 @@
     "RebakeHumanoid.boneMapping:error_childof": "このボーンは {0} ({1}) の子である必要があります。",
     "RebakeHumanoid.boneMapping:generateTemp": "一時的なアバター定義を生成",
     "RebakeHumanoid.boneMapping:generateTemp:note": "VRCSDK（または他のコンポーネント）が、ヒューマノイドボーンマッピングがないなどの理由でビルドを拒否したり、正しく機能しない場合は、上のボタンをクリックして、初期チェックを通過するための一時的なアバター定義を生成してください。",
-    "DeepCleanup:note": "NDMF アセットコンテナからすべての未使用アセットをトリムし、他の場所から参照されたアセットをコンテナにクローンして、「ゴーストアセット」と一緒にバンドルされるのを避けます。"
+    "ConstraintReducer:note": "これは、変換を階層内で移動することで同じ効果が得られる場合に、不必要な制約を削減します。",
+    "FeatureMaintainer:note": "これは、VRChat でデフォルトで無効になっているいくつかのコンポーネントを自動的に再有効化します。"
   },
   "ko": {
     "_name": "한국어",
@@ -351,6 +355,7 @@
     "RebakeHumanoid.boneMapping:error_childof": "이 뼈는 {0}({1})의 자식이어야 합니다.",
     "RebakeHumanoid.boneMapping:generateTemp": "임시 아바타 생성",
     "RebakeHumanoid.boneMapping:generateTemp:note": "VRCSDK(또는 기타 구성 요소)가 인간 뼈 매핑이 없거나 작동하지 않는 이유로 빌드를 거부하는 경우 위의 버튼을 클릭하여 초기 검사를 통과할 임시 아바타를 생성합니다.",
-    "DeepCleanup:note": "NDMF 자산 컨테이너에서 모든 사용되지 않는 자산을 잘라내고 다른 곳에서 참조된 자산을 컨테이너에 복제하여 \"유령 자산\"과 함께 번들링되는 것을 피합니다."
+    "ConstraintReducer:note": "이것은 변환을 계층 내에서 이동하여 동일한 효과를 얻을 수 있는 경우 불필요한 제약 조건을 줄입니다.",
+    "FeatureMaintainer:note": "이것은 VRChat에서 기본적으로 비활성화된 일부 구성 요소를 자동으로 다시 활성화합니다."
   }
 }

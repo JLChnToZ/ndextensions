@@ -8,6 +8,8 @@ using VRC.SDK3.Avatars.Components;
 using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
 
+using static UnityEngine.Object;
+
 namespace JLChnToZ.NDExtensions.Editors {
     public sealed class FeatureMaintainerPass : Pass<FeatureMaintainerPass> {
         public override string DisplayName => "Feature Maintainer";
@@ -16,6 +18,8 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         protected override void Execute(BuildContext context) {
 #if VRC_SDK_VRCSDK3
+            if (!context.AvatarRootObject.TryGetComponent(out FeatureMaintainer tag)) return;
+            DestroyImmediate(tag);
             var extContext = context.Extension<AnimatorServicesContext>();
             FixParticleSystems(context, extContext);
             FixCameraEnable(context, extContext);

@@ -7,7 +7,7 @@ namespace JLChnToZ.NDExtensions {
     [HelpURL("https://github.com/JLChnToZ/ndextensions/?tab=readme-ov-file#humanoid-avatar-rebaker")]
     [RequireComponent(typeof(Animator))]
     [DisallowMultipleComponent]
-    public sealed partial class RebakeHumanoid : MonoBehaviour, IBoneTransformProvider {
+    public sealed partial class RebakeHumanoid : TagComponent, IBoneTransformProvider {
         [Obsolete, SerializeField, HideInInspector] bool autoCalculateFootOffset, fixHoverFeet, fixPose;
         public FixPoseMode fixPoseMode;
         public Vector3 manualOffset;
@@ -74,7 +74,7 @@ namespace JLChnToZ.NDExtensions {
     }
 
 #if VRC_SDK_VRCSDK3
-    public partial class RebakeHumanoid : VRC.SDKBase.IEditorOnly {
+    public partial class RebakeHumanoid {
         public bool adjustViewpoint;
     }
 #endif

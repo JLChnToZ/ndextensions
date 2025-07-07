@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 
-namespace JLChnToZ.NDExtensions.Editors {
+namespace JLChnToZ.NDExtensions {
     public static class HierarchyUtils {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IEnumerable<T> GetBuildableComponentsInChildren<T>(this GameObject root) where T : class =>

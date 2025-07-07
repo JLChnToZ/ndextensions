@@ -173,8 +173,8 @@ namespace JLChnToZ.NDExtensions {
                 var parentName = parentNameField.GetValue(skeleton) as string;
                 if (i == 0)
                     rootBoneName = skeleton.name;
-                else if (rootBoneName == parentName)
-                    parentName = root.name; // The root name is not same as in avatar description.
+                else if (rootBoneName != null && rootBoneName == parentName)
+                    parentName = null;
                 skeletonMapping[(skeleton.name, parentName ?? "")] = skeleton;
             }
             foreach (Transform child in root) walker.Enqueue(child);
@@ -192,12 +192,10 @@ namespace JLChnToZ.NDExtensions {
             }
             if (hips != null) {
                 var trs = Matrix4x4.identity;
-                for (var current = hips; current != null && current != root; current = current.parent) {
-                    if (!(skeletonMapping.TryGetValue((current.name, current.parent.name), out var skeletonBone) ||
-                        skeletonMapping.TryGetValue((current.name, ""), out skeletonBone)))
-                        continue;
-                    trs = Matrix4x4.TRS(skeletonBone.position, skeletonBone.rotation, skeletonBone.scale) * trs;
-                }
+                for (var current = hips; current != null && current != root; current = current.parent)
+                    if (skeletonMapping.TryGetValue((current.name, current.parent.name), out var skeletonBone) ||
+                        skeletonMapping.TryGetValue((current.name, ""), out skeletonBone))
+                        trs = Matrix4x4.TRS(skeletonBone.position, skeletonBone.rotation, skeletonBone.scale) * trs;
                 trs = hips.parent.worldToLocalMatrix * root.localToWorldMatrix * trs;
                 hips.SetLocalPositionAndRotation(trs.GetPosition(), trs.rotation);
                 if (applyScale) hips.localScale = trs.lossyScale;

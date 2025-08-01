@@ -53,6 +53,12 @@
 
 このツールを使用するには、VRChat アバター記述子の同じ階層（ルート）に、コンポーネント (JLChnToZ > Non-Destructive Extensions > Rebake Humanoid Avatar) を追加し、希望するオプションのトグルを切り替えるだけです。
 
+### パラメーター値フィルター
+
+これは、[Animated Animator Parameters (AAP)](https://vrc.school/docs/Other/AAPs) の技術を使用してパラメーター値をフィルタリングするツールです。指数平滑化による滑らかな処理が可能で、他の範囲へのリマッピングも可能です。このツールを使用すれば、ブレンドツリーを自分で作成する必要がありません。
+
+このツールを使用するには、アバター階層下の任意のゲームオブジェクトにこのコンポーネント（JLChnToZ > Non-Destructive Extensions > Parameter Value Filter）を追加するだけです。
+
 ### その他
 
 今後、必要に応じて他のツールも提供される予定です。お楽しみに。

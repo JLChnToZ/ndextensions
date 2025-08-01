@@ -39,6 +39,12 @@ This is a tool that will rebakes the [humanoid avatar](https://docs.unity3d.com/
 
 To use this tool, just add this component (JLChnToZ > Non-Destructive Extensions > Rebake Humanoid Avatar) to the same level (root) of your VRChat avatar descriptor, toggle the options you want and it is all set.
 
+### Parameter Value Filter
+
+This is a tool that filters parameter value using [Animated Animator Parameters (AAP)](https://vrc.school/docs/Other/AAPs) techniques. It can be smooth with exponential smoothing, also can remap to other ranges. With this tool, you don't need to craft the blend trees yourselves.
+
+To use this tool, just add this component (JLChnToZ > Non-Destructive Extensions > Parameter Value Filter) to any game object under your avatar hierarchy.
+
 ### Others
 
 There will be other tools available when needed/requested. So stay tuned.

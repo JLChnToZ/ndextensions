@@ -14,7 +14,10 @@ namespace JLChnToZ.NDExtensions.Editors {
             InPhase(BuildPhase.Resolving)
             .WithRequiredExtension(
                 typeof(RebakeHumanoidContext),
-                seq => seq.Run(GetBareFootPass.Instance)
+                seq => {
+                    seq.Run(GetBareFootPass.Instance);
+                    seq.Run(ParameterResolverPass.Instance);
+                }
             );
             InPhase(BuildPhase.Transforming)
             .AfterPlugin("nadena.dev.modular-avatar")
@@ -26,6 +29,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                         seq2 => seq2.Run(RebakeHumanoidPass.Instance)
                     );
                     seq.Run(FeatureMaintainerPass.Instance);
+                    seq.Run(ParameterValueFilterPass.Instance);
                 }
             );
             InPhase(BuildPhase.Optimizing)

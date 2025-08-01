@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
-using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;
 
 namespace JLChnToZ.NDExtensions.Editors {
     [CustomEditor(typeof(RebakeHumanoid))]
@@ -13,7 +12,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             width20 = new[] { GUILayout.Width(20) },
             width50 = new[] { GUILayout.Width(50) },
             singleLineHeight = new[] { GUILayout.Height(EditorGUIUtility.singleLineHeight) };
-        static string tempAvatarPath;
+        const string tempAvatarPath = "Assets/Generated/";
         static readonly GUIContent tempContent = new();
         static readonly Vector3Int emptyMuscleIndex = new(-1, -1, -1);
         static GUIContent errorIconContent, customLimitsIconContent;
@@ -44,6 +43,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         SerializedProperty generatedAvatarProp;
         Animator animator;
         [NonSerialized] static Transform[] boneCache;
+        bool bonesUpdated;
 
         protected override void OnEnable() {
             base.OnEnable();
@@ -81,6 +81,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                     );
             }
             if (boneCache == null || boneCache.Length == 0) boneCache = new Transform[HumanTrait.BoneCount];
+            bonesUpdated = false;
             if (defaultHumanLimits == null) {
                 defaultHumanLimits = new HumanLimit[HumanTrait.BoneCount];
                 for (int i = 0; i < defaultHumanLimits.Length; i++) {
@@ -215,6 +216,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                         using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
                             boneCache[bone] = EditorGUI.ObjectField(rect, property.content, element.objectReferenceValue, typeof(Transform), true) as Transform;
                             if (changeCheck.changed) element.objectReferenceValue = boneCache[bone];
+                            bonesUpdated = true;
                         }
                         string errorMessage = null;
                         if (boneCache[bone] == null) {
@@ -361,6 +363,15 @@ namespace JLChnToZ.NDExtensions.Editors {
                     }
                 }
             Undo.RecordObject(animator, "Generate Temporary Avatar");
+            if (!bonesUpdated) {
+                if (boneCache == null || boneCache.Length == 0) boneCache = new Transform[HumanTrait.BoneCount];
+                for (int i = 0; i < boneCache.Length; i++) {
+                    var element = boneMappingProp.GetArrayElementAtIndex(i);
+                    if (element == null) break;
+                    boneCache[i] = element.objectReferenceValue as Transform;
+                }
+                bonesUpdated = true;
+            }
             if (HumanoidAvatarProcessor.GenerateTemporaryAvatar(animator, boneCache)) {
                 var generatedAvatar = animator.avatar;
                 if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(generatedAvatar))) {
@@ -370,14 +381,9 @@ namespace JLChnToZ.NDExtensions.Editors {
                         if (!string.IsNullOrEmpty(path)) AssetDatabase.DeleteAsset(path);
                     }
                     if (string.IsNullOrEmpty(path)) {
-                        if (string.IsNullOrEmpty(tempAvatarPath)) {
-                            var packageInfo = PackageManagerPackageInfo.FindForAssembly(typeof(RebakeHumanoid).Assembly);
-                            var dirPath = $"{packageInfo.resolvedPath}/Temp/";
-                            if (!Directory.Exists(dirPath)) {
-                                Directory.CreateDirectory(dirPath);
-                                AssetDatabase.Refresh();
-                            }
-                            tempAvatarPath = $"{packageInfo.assetPath}/Temp/";
+                        if (!Directory.Exists(tempAvatarPath)) {
+                            Directory.CreateDirectory(tempAvatarPath);
+                            AssetDatabase.Refresh();
                         }
                         path = AssetDatabase.GenerateUniqueAssetPath($"{tempAvatarPath}{animator.name} Temp Avatar.asset");
                     }

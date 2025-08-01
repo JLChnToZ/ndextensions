@@ -2,7 +2,6 @@ using System;
 using System.Reflection;
 using System.Collections.Generic;
 using UnityEngine;
-using System.Drawing.Drawing2D;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -33,7 +32,7 @@ namespace JLChnToZ.NDExtensions {
         };
 
 #if UNITY_EDITOR
-        [UnityEditor.InitializeOnLoadMethod]
+        [InitializeOnLoadMethod]
 #else
         [RuntimeInitializeOnLoadMethod]
 #endif

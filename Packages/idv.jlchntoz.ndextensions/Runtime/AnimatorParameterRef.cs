@@ -24,11 +24,13 @@ namespace JLChnToZ.NDExtensions {
 
         public override readonly int GetHashCode() =>
             HashCode.Combine(name, type, source);
-        
+
+#if UNITY_EDITOR
         public static implicit operator AnimatorControllerParameter(AnimatorParameterRef parameter) => new() {
             name = parameter.name,
             type = parameter.type,
         };
+#endif
     }
 
     [AttributeUsage(AttributeTargets.Field, AllowMultiple = false)]

@@ -12,6 +12,9 @@ namespace JLChnToZ.NDExtensions.Editors {
         SerializedProperty remapValuesParameter;
         SerializedProperty remapMinParameter;
         SerializedProperty remapMaxParameter;
+        SerializedProperty smoothTypeParameter;
+        SerializedProperty timeBasedParameter;
+        SerializedProperty maxDeltaParameter;
 
         protected override void OnEnable() {
             base.OnEnable();
@@ -23,6 +26,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             remapValuesParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.remapValues));
             remapMinParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.remapMin));
             remapMaxParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.remapMax));
+            smoothTypeParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.smoothType));
+            timeBasedParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.timeBased));
+            maxDeltaParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.maxDelta));
         }
 
         protected override void DrawFields() {
@@ -35,10 +41,19 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.PropertyField(minValueParameter, i18n.GetContent("ParameterValueFilter.minValue"));
             EditorGUILayout.PropertyField(maxValueParameter, i18n.GetContent("ParameterValueFilter.maxValue"));
 
-            using (new EditorGUILayout.HorizontalScope()) {
-                bool useValue = string.IsNullOrEmpty(smoothParameterParameter.FindPropertyRelative(nameof(AnimatorParameterRef.name)).stringValue);
-                if (useValue) EditorGUILayout.PropertyField(smoothValueParameter, i18n.GetContent("ParameterValueFilter.smoothValue"));
-                EditorGUILayout.PropertyField(smoothParameterParameter, useValue ? GUIContent.none : i18n.GetContent("ParameterValueFilter.smoothParameter"));
+            i18n.EnumFieldLayout(smoothTypeParameter, "ParameterValueFilter.smoothType");
+
+            var smoothType = (SmoothType)smoothTypeParameter.intValue;
+
+            if (smoothType != SmoothType.None) {
+                using (new EditorGUILayout.HorizontalScope()) {
+                    bool useValue = string.IsNullOrEmpty(smoothParameterParameter.FindPropertyRelative(nameof(AnimatorParameterRef.name)).stringValue);
+                    if (useValue) EditorGUILayout.PropertyField(smoothValueParameter, i18n.GetContent("ParameterValueFilter.smoothValue"));
+                    EditorGUILayout.PropertyField(smoothParameterParameter, useValue ? GUIContent.none : i18n.GetContent("ParameterValueFilter.smoothParameter"));
+                }
+                EditorGUILayout.PropertyField(timeBasedParameter, i18n.GetContent("ParameterValueFilter.timeBased"));
+                if (smoothType == SmoothType.Linear)
+                    EditorGUILayout.PropertyField(maxDeltaParameter, i18n.GetContent("ParameterValueFilter.maxDelta"));
             }
 
             EditorGUILayout.PropertyField(remapValuesParameter, i18n.GetContent("ParameterValueFilter.remapValues"));

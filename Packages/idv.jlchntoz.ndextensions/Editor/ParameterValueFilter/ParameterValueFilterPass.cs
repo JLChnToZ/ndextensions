@@ -1,6 +1,4 @@
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using UnityEngine;
 using UnityEditor.Animations;
 #if VRC_SDK_VRCSDK3
 using VRC.SDK3.Avatars.Components;
@@ -9,8 +7,6 @@ using nadena.dev.ndmf;
 using nadena.dev.ndmf.animator;
 
 using UnityObject = UnityEngine.Object;
-using ACParameter = UnityEngine.AnimatorControllerParameter;
-using ACParameterType = UnityEngine.AnimatorControllerParameterType;
 
 namespace JLChnToZ.NDExtensions.Editors {
     public sealed class ParameterValueFilterPass : Pass<ParameterValueFilterPass> {
@@ -43,87 +39,42 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void ProcessController(VirtualAnimatorController controller, IReadOnlyDictionary<string, ParameterValueFilter> filters) {
-            var parameters = controller.Parameters;
+            var context = new AAPContext(controller);
             var replaceParameters = new Dictionary<string, string>();
-            var remapParameters = new Dictionary<string, string>();
-            foreach (var parameter in parameters) {
+            foreach (var parameter in controller.Parameters) {
                 if (!filters.TryGetValue(parameter.Key, out var filter)) continue;
-                if (filter.smoothParameter.IsValid) {
-                    if (!parameters.ContainsKey(filter.smoothParameter.name))
-                        parameters = parameters.SetItem(filter.smoothParameter.name, filter.smoothParameter);
-                } else if (filter.smoothValue >= 1 && (!filter.remapValues || (filter.remapMin == filter.minValue && filter.remapMax == filter.maxValue)))
+                var smoothFactor = filter.SmoothFactor;
+                if (!string.IsNullOrEmpty(smoothFactor.propertyName))
+                    context.EnsureParameter(filter.parameter);
+                else if (filter.smoothType == SmoothType.None && !filter.remapValues)
                     continue;
-                var smoothedName = GetUniqueName(ref parameters, $"__AAP/smooth_{parameter.Key}", parameter.Value.defaultFloat);
-                replaceParameters[parameter.Key] = smoothedName;
-                if (filter.remapValues && (filter.remapMin != filter.minValue || filter.remapMax != filter.maxValue) && filter.smoothValue < 1)
-                    remapParameters[parameter.Key] = GetUniqueName(ref parameters, $"__AAP/remap_{parameter.Key}", filter.remapMin);
+                replaceParameters[parameter.Key] = context.GetUniqueParameter($"{parameter.Key}/AAP_Smooth", parameter.Value.defaultFloat);
             }
             if (replaceParameters.Count == 0) return;
             ReplaceParameters(controller, replaceParameters);
-            var layerStateMachine = controller.AddLayer(LayerPriority.Default, "Parameter Value Filter").StateMachine;
-            var defaultBlendTree = VirtualBlendTree.Create("Smooth Parameters");
-            defaultBlendTree.BlendType = BlendTreeType.Direct;
-            var defaultState = layerStateMachine.AddState("Smooth Parameters (WD On)", defaultBlendTree);
-            defaultState.WriteDefaultValues = true;
-            layerStateMachine.DefaultState = defaultState;
-            var tempParameters = new Dictionary<float, string>();
             foreach (var (src, dest) in replaceParameters) {
                 if (!filters.TryGetValue(src, out var filter)) continue;
-                var dest0 = VirtualClip.Create($"{dest} = {filter.minValue}");
-                var dest1 = VirtualClip.Create($"{dest} = {filter.maxValue}");
-                if (remapParameters.TryGetValue(src, out var lerp)) {
-                    dest0.Name = $"{dest} = {filter.remapMin}";
-                    dest0.SetFloatCurve("", typeof(Animator), dest, AnimationCurve.Constant(0, 1 / dest0.FrameRate, filter.remapMin));
-                    dest1.Name = $"{dest} = {filter.remapMax}";
-                    dest1.SetFloatCurve("", typeof(Animator), dest, AnimationCurve.Constant(0, 1 / dest1.FrameRate, filter.remapMax));
-                } else
-                    lerp = dest;
-                dest0.SetFloatCurve("", typeof(Animator), lerp, AnimationCurve.Constant(0, 1 / dest0.FrameRate, filter.minValue));
-                dest1.SetFloatCurve("", typeof(Animator), lerp, AnimationCurve.Constant(0, 1 / dest1.FrameRate, filter.maxValue));
-                var destValueTree = VirtualBlendTree.Create("immediate");
-                destValueTree.BlendType = BlendTreeType.Simple1D;
-                destValueTree.BlendParameter = src;
-                destValueTree.UseAutomaticThresholds = false;
-                destValueTree.Children = ImmutableList.Create(
-                    new VirtualBlendTree.VirtualChildMotion { Motion = dest0, Threshold = filter.minValue },
-                    new VirtualBlendTree.VirtualChildMotion { Motion = dest1, Threshold = filter.maxValue }
-                );
-                if (filter.smoothParameter.IsValid || filter.smoothValue < 1) {
-                    var srcValueTree = VirtualBlendTree.Create("smooth");
-                    srcValueTree.BlendType = BlendTreeType.Simple1D;
-                    srcValueTree.BlendParameter = lerp;
-                    srcValueTree.UseAutomaticThresholds = false;
-                    srcValueTree.Children = ImmutableList.Create(
-                        new VirtualBlendTree.VirtualChildMotion { Motion = dest0, Threshold = filter.minValue },
-                        new VirtualBlendTree.VirtualChildMotion { Motion = dest1, Threshold = filter.maxValue }
-                    );
-                    var smoothRootTree = VirtualBlendTree.Create(src);
-                    smoothRootTree.BlendType = BlendTreeType.Simple1D;
-                    smoothRootTree.BlendParameter = filter.smoothParameter.IsValid ?
-                        filter.smoothParameter.name :
-                        GetTempParameter(ref parameters, tempParameters, filter.smoothValue);
-                    smoothRootTree.UseAutomaticThresholds = false;
-                    smoothRootTree.Children = ImmutableList.Create(
-                        new VirtualBlendTree.VirtualChildMotion { Motion = srcValueTree, Threshold = 0 },
-                        new VirtualBlendTree.VirtualChildMotion { Motion = destValueTree, Threshold = 1 }
-                    );
-                    defaultBlendTree.Children = defaultBlendTree.Children.Add(
-                        new VirtualBlendTree.VirtualChildMotion {
-                            Motion = smoothRootTree,
-                            DirectBlendParameter = GetTempParameter(ref parameters, tempParameters, 1F),
-                        }
-                    );
-                } else {
-                    destValueTree.Name = src;
-                    defaultBlendTree.Children = defaultBlendTree.Children.Add(
-                        new VirtualBlendTree.VirtualChildMotion {
-                            Motion = destValueTree,
-                            DirectBlendParameter = GetTempParameter(ref parameters, tempParameters, 1F),
-                        }
-                    );
+                switch (filter.smoothType) {
+                    case SmoothType.None:
+                        if (filter.remapValues)
+                            context.Remap(src, dest, filter.minValue, filter.maxValue, filter.remapMin, filter.remapMax);
+                        break;
+                    case SmoothType.Linear:
+                        if (filter.remapValues) {
+                            var remapParameter = context.GetUniqueParameter($"{src}/AAP_Remap", 0);
+                            context.LinearSmooth(src, remapParameter, filter.SmoothFactor, filter.minValue, filter.maxValue, filter.maxDelta);
+                            context.Remap(remapParameter, dest, filter.minValue, filter.maxValue, filter.remapMin, filter.remapMax);
+                        } else
+                            context.LinearSmooth(src, dest, filter.SmoothFactor, filter.minValue, filter.maxValue, filter.maxDelta);
+                        break;
+                    case SmoothType.Exponential:
+                        if (filter.remapValues)
+                            context.ExponentialSmooth(src, dest, filter.SmoothFactor, filter.minValue, filter.maxValue, filter.remapMin, filter.remapMax);
+                        else
+                            context.ExponentialSmooth(src, dest, filter.SmoothFactor, filter.minValue, filter.maxValue);
+                        break;
                 }
             }
-            controller.Parameters = parameters;
         }
 
         void ReplaceParameters(VirtualAnimatorController controller, IReadOnlyDictionary<string, string> parameters) {
@@ -177,34 +128,6 @@ namespace JLChnToZ.NDExtensions.Editors {
                     continue;
                 }
             }
-        }
-
-        static string GetUniqueName(ref ImmutableDictionary<string, ACParameter> dictionary, string parameterName, float defaultValue) =>
-            GetUniqueName(ref dictionary, new ACParameter {
-                name = parameterName,
-                type = ACParameterType.Float,
-                defaultFloat = defaultValue,
-            });
-
-        static string GetUniqueName(ref ImmutableDictionary<string, ACParameter> dictionary, ACParameter parameter) {
-            if (dictionary.ContainsKey(parameter.name))
-                for (int i = 0; ; i++) {
-                    var newName = $"{parameter.name}_{i}";
-                    if (!dictionary.ContainsKey(newName)) {
-                        parameter.name = newName;
-                        break;
-                    }
-                }
-            dictionary = dictionary.SetItem(parameter.name, parameter);
-            return parameter.name;
-        }
-
-        string GetTempParameter(ref ImmutableDictionary<string, ACParameter> parameters, IDictionary<float, string> tempParameters, float constant) {
-            if (!tempParameters.TryGetValue(constant, out var parameterName)) {
-                parameterName = GetUniqueName(ref parameters, $"__AAP/const_{constant}", constant);
-                tempParameters[constant] = parameterName;
-            }
-            return parameterName;
         }
     }
 }

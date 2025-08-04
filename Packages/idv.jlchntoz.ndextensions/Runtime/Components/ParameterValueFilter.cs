@@ -7,11 +7,18 @@ namespace JLChnToZ.NDExtensions {
         public AnimatorParameterRef parameter;
         public float minValue = 0.0F;
         public float maxValue = 1.0F;
-        [Range(0, 1)] public float smoothValue = 0.01F;
+        public SmoothType smoothType = SmoothType.Exponential;
+        [Min(0)] public float smoothValue = 0.01F;
         [AnimatorParameterRefUsage(EnforcedType = ParameterType.Float)]
         public AnimatorParameterRef smoothParameter;
+        public bool timeBased = false;
+        [Min(0)] public float maxDelta = 0.1F;
         public bool remapValues = false;
         public float remapMin = 0.0F;
         public float remapMax = 1.0F;
+
+        public SmoothFactor SmoothFactor => smoothParameter.IsValid ?
+            new(smoothParameter.name, timeBased) :
+            new(smoothValue, timeBased);
     }
 }

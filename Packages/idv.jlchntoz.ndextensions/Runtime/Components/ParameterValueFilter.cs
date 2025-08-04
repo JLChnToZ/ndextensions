@@ -12,7 +12,6 @@ namespace JLChnToZ.NDExtensions {
         [AnimatorParameterRefUsage(EnforcedType = ParameterType.Float)]
         public AnimatorParameterRef smoothParameter;
         public bool timeBased = false;
-        [Min(0)] public float maxDelta = 0.1F;
         public bool remapValues = false;
         public float remapMin = 0.0F;
         public float remapMax = 1.0F;

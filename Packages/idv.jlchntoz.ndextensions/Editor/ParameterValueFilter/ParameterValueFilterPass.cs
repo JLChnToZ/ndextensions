@@ -62,10 +62,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                     case SmoothType.Linear:
                         if (filter.remapValues) {
                             var remapParameter = context.GetUniqueParameter($"{src}/AAP_Remap", 0);
-                            context.LinearSmooth(src, remapParameter, filter.SmoothFactor, filter.minValue, filter.maxValue, filter.maxDelta);
+                            context.LinearSmooth(src, remapParameter, filter.SmoothFactor, filter.minValue, filter.maxValue);
                             context.Remap(remapParameter, dest, filter.minValue, filter.maxValue, filter.remapMin, filter.remapMax);
                         } else
-                            context.LinearSmooth(src, dest, filter.SmoothFactor, filter.minValue, filter.maxValue, filter.maxDelta);
+                            context.LinearSmooth(src, dest, filter.SmoothFactor, filter.minValue, filter.maxValue);
                         break;
                     case SmoothType.Exponential:
                         if (filter.remapValues)

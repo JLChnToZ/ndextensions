@@ -112,13 +112,18 @@ namespace JLChnToZ.NDExtensions.Editors {
                 .AddMotion(srcMax, ParameterDriverClip(dest, destMax))
             );
 
-        public void LinearSmooth(string src, string dest, SmoothFactor smoothFactor, float min, float max, float maxDelta) {
+        public void LinearSmooth(string src, string dest, SmoothFactor smoothFactor, float min, float max) {
             var deltaParameter = GetUniqueParameter($"{dest}/AAP_Delta", 0);
-            maxDelta = Mathf.Abs(maxDelta);
-            if (maxDelta <= 0) return;
-            var minDelta = -maxDelta;
             var rangeMax = Mathf.Max(Mathf.Abs(min), Mathf.Abs(max));
             var rangeMin = -rangeMax;
+            float minDelta, maxDelta;
+            if (string.IsNullOrWhiteSpace(smoothFactor.propertyName)) {
+                minDelta = Mathf.Max(-smoothFactor.constantValue, rangeMin);
+                maxDelta = Mathf.Min(smoothFactor.constantValue, rangeMax);
+            } else {
+                minDelta = rangeMin;
+                maxDelta = rangeMax;
+            }
             var srcDeltaMin = ParameterDriverClip(deltaParameter, rangeMin);
             var srcDeltaMax = ParameterDriverClip(deltaParameter, rangeMax);
             RootBlendTree.AddMotion(GetTempParameter(1), VirtualBlendTree.Create($"{deltaParameter} = {src}").Set1D(src)

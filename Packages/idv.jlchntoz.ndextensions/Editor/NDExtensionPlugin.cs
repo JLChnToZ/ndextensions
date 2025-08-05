@@ -24,20 +24,14 @@ namespace JLChnToZ.NDExtensions.Editors {
             .WithRequiredExtension(
                 typeof(AnimatorServicesContext),
                 seq => {
+                    seq.Run(ParameterValueFilterPass.Instance);
+                    seq.Run(FeatureMaintainerPass.Instance);
+                    seq.Run(ConstraintReducerPass.Instance);
                     seq.WithRequiredExtension(
                         typeof(RebakeHumanoidContext),
                         seq2 => seq2.Run(RebakeHumanoidPass.Instance)
                     );
-                    seq.Run(FeatureMaintainerPass.Instance);
-                    seq.Run(ParameterValueFilterPass.Instance);
                 }
-            );
-            InPhase(BuildPhase.Optimizing)
-            .AfterPlugin("nadena.dev.modular-avatar")
-            .BeforePlugin("com.anatawa12.avatar-optimizer")
-            .WithRequiredExtension(
-                typeof(AnimatorServicesContext),
-                seq => seq.Run(ConstraintReducerPass.Instance)
             );
         }
     }

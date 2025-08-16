@@ -5,6 +5,7 @@ namespace JLChnToZ.NDExtensions.Editors {
     [CustomEditor(typeof(ParameterValueFilter))]
     public class ParameterValueFilterEditor : TagComponentEditor {
         SerializedProperty parameterParameter;
+        SerializedProperty sourceParameterParameter;
         SerializedProperty minValueParameter;
         SerializedProperty maxValueParameter;
         SerializedProperty smoothValueParameter;
@@ -18,6 +19,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         protected override void OnEnable() {
             base.OnEnable();
             parameterParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.parameter));
+            sourceParameterParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.sourceParameter));
             minValueParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.minValue));
             maxValueParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.maxValue));
             smoothValueParameter = serializedObject.FindProperty(nameof(ParameterValueFilter.smoothValue));
@@ -35,6 +37,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.HelpBox(i18n["ParameterValueFilter:note"], MessageType.Info);
 
             EditorGUILayout.PropertyField(parameterParameter, i18n.GetContent("ParameterValueFilter.parameter"));
+            EditorGUILayout.PropertyField(sourceParameterParameter, i18n.GetContent("ParameterValueFilter.sourceParameter"));
 
             EditorGUILayout.PropertyField(minValueParameter, i18n.GetContent("ParameterValueFilter.minValue"));
             EditorGUILayout.PropertyField(maxValueParameter, i18n.GetContent("ParameterValueFilter.maxValue"));

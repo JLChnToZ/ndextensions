@@ -41,19 +41,30 @@ namespace JLChnToZ.NDExtensions.Editors {
         void ProcessController(VirtualAnimatorController controller, IReadOnlyDictionary<string, ParameterValueFilter> filters) {
             var context = new AAPContext(controller);
             var replaceParameters = new Dictionary<string, string>();
-            foreach (var parameter in controller.Parameters) {
-                if (!filters.TryGetValue(parameter.Key, out var filter)) continue;
+            var processFilters = new Dictionary<ParameterValueFilter, (string src, string dest)>();
+            foreach (var kv in controller.Parameters) {
+                var dest = kv.Key;
+                if (!filters.TryGetValue(dest, out var filter)) continue;
+                var parameter = kv.Value;
                 var smoothFactor = filter.SmoothFactor;
                 if (!string.IsNullOrEmpty(smoothFactor.propertyName))
                     context.EnsureParameter(filter.parameter);
                 else if (filter.smoothType == SmoothType.None && !filter.remapValues)
                     continue;
-                replaceParameters[parameter.Key] = context.GetUniqueParameter($"{parameter.Key}/AAP_Smooth", parameter.Value.defaultFloat);
+                string src;
+                if (filter.sourceParameter.IsValid) {
+                    src = filter.sourceParameter.name;
+                    context.EnsureParameter(filter.sourceParameter);
+                } else {
+                    src = dest;
+                    dest = context.GetUniqueParameter($"{src}/AAP_Smooth", parameter.defaultFloat);
+                    replaceParameters[src] = dest;
+                }
+                processFilters[filter] = (src, dest);
             }
-            if (replaceParameters.Count == 0) return;
+            if (processFilters.Count == 0) return;
             ReplaceParameters(controller, replaceParameters);
-            foreach (var (src, dest) in replaceParameters) {
-                if (!filters.TryGetValue(src, out var filter)) continue;
+            foreach (var (filter, (src, dest)) in processFilters) {
                 switch (filter.smoothType) {
                     case SmoothType.None:
                         if (filter.remapValues)
@@ -78,6 +89,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void ReplaceParameters(VirtualAnimatorController controller, IReadOnlyDictionary<string, string> parameters) {
+            if (parameters.Count == 0) return;
             foreach (var node in controller.AllReachableNodes()) {
                 string n;
                 if (node is VirtualTransitionBase transition) {

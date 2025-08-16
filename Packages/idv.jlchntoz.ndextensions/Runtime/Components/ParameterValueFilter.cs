@@ -5,6 +5,8 @@ namespace JLChnToZ.NDExtensions {
     public sealed class ParameterValueFilter : TagComponent {
         [AnimatorParameterRefUsage(EnforcedType = ParameterType.Float)]
         public AnimatorParameterRef parameter;
+        [AnimatorParameterRefUsage(EnforcedType = ParameterType.Float)]
+        public AnimatorParameterRef sourceParameter;
         public float minValue = 0.0F;
         public float maxValue = 1.0F;
         public SmoothType smoothType = SmoothType.Exponential;

@@ -48,6 +48,10 @@ namespace JLChnToZ.NDExtensions {
         Int = 0x2,
         Bool = 0x4,
         Trigger = 0x8,
+        AllTypes = Float | Int | Bool | Trigger,
+        Synchronized = 0x10,
+        NonSynchronized = 0x20,
+        SynchronizeSpecified = Synchronized | NonSynchronized,
     }
 
     public static class AnimatorParameterRefExtensions {
@@ -59,7 +63,19 @@ namespace JLChnToZ.NDExtensions {
             _ => false,
         };
 
-        public static AnimatorControllerParameterType ToAnimatorControllerParameterType(this ParameterType type) => type switch {
+        public static bool? RequireSynchronize(this ParameterType type) {
+            if ((type & ParameterType.Synchronized) == ParameterType.Synchronized) return true;
+            if ((type & ParameterType.NonSynchronized) == ParameterType.NonSynchronized) return false;
+            return null;
+        }
+
+        public static bool MatchesSynchronize(this ParameterType type, bool synchronized) {
+            if ((type & ParameterType.Synchronized) == ParameterType.Synchronized) return synchronized;
+            if ((type & ParameterType.NonSynchronized) == ParameterType.NonSynchronized) return !synchronized;
+            return true;
+        }
+
+        public static AnimatorControllerParameterType ToAnimatorControllerParameterType(this ParameterType type) => (type & ParameterType.AllTypes) switch {
             ParameterType.Float => AnimatorControllerParameterType.Float,
             ParameterType.Int => AnimatorControllerParameterType.Int,
             ParameterType.Bool => AnimatorControllerParameterType.Bool,

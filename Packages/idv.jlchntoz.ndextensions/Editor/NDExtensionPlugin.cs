@@ -33,6 +33,12 @@ namespace JLChnToZ.NDExtensions.Editors {
                     );
                 }
             );
+            InPhase(BuildPhase.Optimizing)
+            .BeforePlugin("com.anatawa12.avatar-optimizer")
+            .WithRequiredExtension(
+                typeof(AnimatorServicesContext),
+                seq => seq.Run(ParameterCompressorPass.Instance)
+            );
         }
     }
 }

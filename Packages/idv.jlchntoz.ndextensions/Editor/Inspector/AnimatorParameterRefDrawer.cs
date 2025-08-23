@@ -43,18 +43,20 @@ namespace JLChnToZ.NDExtensions.Editors {
                 var nameValue = nameProp.stringValue;
                 var sourceValue = sourceProp.objectReferenceValue as Component;
                 var parameterCache = GetCache(target, ignoreComponents);
+                var synchronizeState = enforcedType & ParameterType.SynchronizeSpecified;
+                enforcedType &= ParameterType.AllTypes;
                 bool isTypeEnforced = enforcedType != ParameterType.None;
                 if (!isTypeEnforced && parameterCache != null) {
                     if (parameterCache.Parameters.TryGetValue((nameValue, sourceValue), out var _enforcedType))
-                        enforcedType = _enforcedType.ToParameterType();
+                        enforcedType = _enforcedType.type.ToParameterType();
                     else {
                         if (parameterCache.GuessedComponents.TryGetValue(nameValue, out sourceValue) &&
                             parameterCache.Parameters.TryGetValue((nameValue, sourceValue), out _enforcedType))
-                            enforcedType = _enforcedType.ToParameterType();
+                            enforcedType = _enforcedType.type.ToParameterType();
                         sourceProp.objectReferenceValue = sourceValue;
                     }
                 }
-                if (!enforcedType.Has((AnimatorControllerParameterType)typeProp.intValue))
+                if (!enforcedType.Has((AnimatorControllerParameterType)typeProp.intValue) && enforcedType != ParameterType.None)
                     typeProp.intValue = (int)enforcedType.ToAnimatorControllerParameterType();
                 var nameRect = position;
                 var typeRect = position;
@@ -90,7 +92,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                                     var menu = new GenericMenu();
                                     var menuPath = new List<string>();
                                     foreach (var p in parameterCache.Parameters)
-                                        if (!isTypeEnforced || enforcedType.Has(p.Value)) {
+                                        if ((!isTypeEnforced || enforcedType.Has(p.Value.type)) && synchronizeState.MatchesSynchronize(p.Value.synchroized)) {
                                             if (p.Key.source != null) menuPath.Add(p.Key.source.name);
                                             menuPath.Add(p.Key.propertyName);
                                             menu.AddItem(

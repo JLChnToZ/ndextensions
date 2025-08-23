@@ -39,7 +39,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void ProcessController(VirtualAnimatorController controller, IReadOnlyDictionary<string, ParameterValueFilter> filters) {
-            var context = new AAPContext(controller);
+            var context = AAPContext.ForController(controller);
             var replaceParameters = new Dictionary<string, string>();
             var processFilters = new Dictionary<ParameterValueFilter, (string src, string dest)>();
             foreach (var kv in controller.Parameters) {

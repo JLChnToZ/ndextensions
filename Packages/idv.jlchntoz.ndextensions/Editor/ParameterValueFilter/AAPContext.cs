@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using nadena.dev.ndmf.animator;
 using ACParameter = UnityEngine.AnimatorControllerParameter;
@@ -8,6 +9,7 @@ namespace JLChnToZ.NDExtensions.Editors {
     // Ref: https://vrc.school/docs/Other/AAPs
     // Ref: https://vrc.school/docs/Other/Advanced-BlendTrees
     public class AAPContext {
+        static readonly ConditionalWeakTable<VirtualAnimatorController, AAPContext> instances = new();
         readonly VirtualAnimatorController controller;
         readonly Dictionary<float, string> tempParameters = new();
         VirtualBlendTree rootBlendTree;
@@ -49,10 +51,15 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
         }
 
+        public static AAPContext ForController(VirtualAnimatorController controller) =>
+            instances.GetValue(controller, CreateInstance);
+
+        static AAPContext CreateInstance(VirtualAnimatorController controller) => new(controller);
+
         static VirtualClip ParameterDriverClip(string parameterName, float value) =>
             VirtualClip.Create($"{parameterName} = {value}").SetConstantParameterDriver(parameterName, value);
 
-        public AAPContext(VirtualAnimatorController controller) {
+        AAPContext(VirtualAnimatorController controller) {
             this.controller = controller;
         }
 

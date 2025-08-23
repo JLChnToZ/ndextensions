@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Collections.Immutable;
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -15,6 +17,7 @@ using static VRC.SDKBase.VRC_AvatarParameterDriver;
 
 namespace JLChnToZ.NDExtensions.Editors {
     public static class VirtualControllerFluent {
+        static readonly ConditionalWeakTable<VirtualTransitionBase, VirtualNode> transitionSources = new();
         static readonly FieldInfo blendTreeField = typeof(VirtualBlendTree).GetField("_tree", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
         public static bool DetermineWriteDefaults(this VirtualAnimatorController controller) {
@@ -38,6 +41,15 @@ namespace JLChnToZ.NDExtensions.Editors {
                         wdOffCount++;
             }
             return wdOnCount > wdOffCount;
+        }
+
+        public static ACParameter EnsureParameter(this VirtualAnimatorController controller, string parameterName, ACParameterType parameterType, bool preventDuplicate = true) {
+            var acp = new ACParameter {
+                name = parameterName,
+                type = parameterType,
+            };
+            EnsureParameter(controller, ref acp, preventDuplicate);
+            return acp;
         }
 
         public static void EnsureParameter(this VirtualAnimatorController controller, ref ACParameter parameter, bool preventDuplicate = true) {
@@ -137,6 +149,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var trans = CreateStateTransition();
             trans.SetDestination(to);
             from.Transitions = from.Transitions.Add(trans);
+            transitionSources.Add(trans, from);
             return trans;
         }
 
@@ -144,6 +157,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var trans = CreateStateTransition();
             trans.SetDestination(to);
             from.Transitions = from.Transitions.Add(trans);
+            transitionSources.Add(trans, from);
             return trans;
         }
 
@@ -151,6 +165,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var trans = CreateStateTransition();
             trans.SetDestination(to);
             from.AnyStateTransitions = from.AnyStateTransitions.Add(trans);
+            transitionSources.Add(trans, from);
             return trans;
         }
 
@@ -158,6 +173,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var trans = CreateStateTransition();
             trans.SetDestination(to);
             from.AnyStateTransitions = from.AnyStateTransitions.Add(trans);
+            transitionSources.Add(trans, from);
             return trans;
         }
 
@@ -174,6 +190,8 @@ namespace JLChnToZ.NDExtensions.Editors {
             var trans = VirtualTransition.Create();
             trans.SetDestination(state);
             machine.EntryTransitions = machine.EntryTransitions.Add(trans);
+            machine.DefaultState ??= state;
+            transitionSources.Add(trans, machine);
             return trans;
         }
 
@@ -247,6 +265,30 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public static VirtualStateTransition When(this VirtualStateTransition transition, AnimatorConditionMode mode, string parameter, bool value) =>
             transition.When(mode, parameter, value ? 1 : 0);
+
+        public static VirtualTransition Or(this VirtualTransition transition) {
+            var clone = transition.Clone() as VirtualTransition;
+            clone.Conditions = ImmutableList<AnimatorCondition>.Empty;
+            if (transitionSources.TryGetValue(transition, out var source) &&
+                source is VirtualStateMachine sm) {
+                sm.EntryTransitions = sm.EntryTransitions.Add(clone);
+                transitionSources.Add(clone, source);
+            }
+            return clone;
+        }
+
+        public static VirtualStateTransition Or(this VirtualStateTransition transition) {
+            var clone = transition.Clone() as VirtualStateTransition;
+            clone.Conditions = ImmutableList<AnimatorCondition>.Empty;
+            if (transitionSources.TryGetValue(transition, out var source)) {
+                if (source is VirtualStateMachine sm)
+                    sm.AnyStateTransitions = sm.AnyStateTransitions.Add(clone);
+                else if (source is VirtualState s)
+                    s.Transitions = s.Transitions.Add(clone);
+                transitionSources.Add(clone, source);
+            }
+            return clone;
+        }
 
         public static VirtualStateTransition ExitTime(this VirtualStateTransition transition, float exitTime = 0) {
             transition.ExitTime = exitTime;
@@ -434,12 +476,15 @@ namespace JLChnToZ.NDExtensions.Editors {
             remapper.GetVirtualPathForObject(target.transform), propertyName, value
         );
 
-#if VRC_SDK_VRCSDK3
-        public static VRCAvatarParameterDriver WithParameterChange(this VirtualState state) {
-            var behaviour = ScriptableObject.CreateInstance<VRCAvatarParameterDriver>();
+        public static T WithBehaviour<T>(this VirtualState state) where T : StateMachineBehaviour {
+            var behaviour = ScriptableObject.CreateInstance<T>();
             state.Behaviours = state.Behaviours.Add(behaviour);
             return behaviour;
         }
+
+#if VRC_SDK_VRCSDK3
+        public static VRCAvatarParameterDriver WithParameterChange(this VirtualState state) =>
+            state.WithBehaviour<VRCAvatarParameterDriver>();
 
         public static VRCAvatarParameterDriver Set(this VRCAvatarParameterDriver driver, string name, float value) {
             driver.parameters.Add(new Parameter {

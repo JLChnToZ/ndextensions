@@ -7,15 +7,13 @@ namespace JLChnToZ.NDExtensions.Editors {
     public class FieldPatcher<T> {
         public delegate bool Patcher(ref T parameter);
         static readonly List<Cache> tempFields = new();
-        static readonly Type targetType, unityObjectType;
+        static readonly Type targetType = typeof(T),
+            unityObjectType = typeof(UnityEngine.Object),
+            stringType = typeof(string),
+            nullableType = typeof(Nullable<>);
         static readonly Dictionary<Type, Cache[]> fieldCache = new();
         readonly ConditionalWeakTable<object, object> cache = new();
         readonly Patcher patcher;
-
-        static FieldPatcher() {
-            targetType = typeof(T);
-            unityObjectType = typeof(UnityEngine.Object);
-        }
 
         static Cache[] GetFieldsOfType(Type type) {
             if (!fieldCache.TryGetValue(type, out var fields))
@@ -26,19 +24,26 @@ namespace JLChnToZ.NDExtensions.Editors {
                         var allFields = currentType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
                         foreach (var field in allFields) {
                             var fieldType = field.FieldType;
-                            if (fieldType == unityObjectType || fieldType.IsSubclassOf(unityObjectType))
-                                continue;
-                            if (fieldType.IsValueType && field.IsInitOnly)
-                                continue;
-                            if (fieldType == targetType) {
+                            if (targetType.IsAssignableFrom(fieldType)) {
                                 tempFields.Add(new(field, FieldType.TargetType));
                                 continue;
                             }
-                            tempFields.Add(new(field, FieldType.ScanRecursive));
+                            var underlyType = fieldType;
+                            if (underlyType.IsArray) underlyType = underlyType.GetElementType();
+                            if (underlyType.IsGenericType && underlyType.GetGenericTypeDefinition() == nullableType)
+                                underlyType = Nullable.GetUnderlyingType(underlyType);
+                            if (!underlyType.IsPrimitive &&
+                                !underlyType.IsPointer &&
+                                !underlyType.IsEnum &&
+                                underlyType != stringType &&
+                                !unityObjectType.IsAssignableFrom(underlyType) &&
+                                (!fieldType.IsValueType || !field.IsInitOnly))
+                                tempFields.Add(new(field, FieldType.ScanRecursive));
                         }
                         currentType = currentType.BaseType;
                     }
-                    fieldCache[type] = fields = tempFields.ToArray();
+                    fields = tempFields.ToArray();
+                    fieldCache[type] = fields;
                 } finally {
                     tempFields.Clear();
                 }
@@ -49,15 +54,16 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public object Patch(object obj) {
             if (obj == null) return null;
-            bool isValueType = targetType.IsValueType;
+            var objType = obj.GetType();
+            bool isValueType = objType.IsValueType;
             if (!isValueType && cache.TryGetValue(obj, out var patched)) return patched;
             if (obj is T tObj && patcher(ref tObj)) {
                 if (!isValueType) cache.Add(obj, tObj);
                 return tObj;
             }
-            if (obj is Array arr)
-                return Patch(arr);
-            foreach (var field in GetFieldsOfType(obj.GetType())) {
+            if (obj is Array arr) return Patch(arr);
+            if (!isValueType) cache.Add(obj, obj);
+            foreach (var field in GetFieldsOfType(objType)) {
                 var value = field.fieldInfo.GetValue(obj);
                 switch (field.fieldType) {
                     case FieldType.TargetType:
@@ -67,12 +73,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                     case FieldType.ScanRecursive:
                         if (value is Array array)
                             field.fieldInfo.SetValue(obj, Patch(array));
-                        else if (value.GetType().IsValueType || !ReferenceEquals(value, obj))
+                        else if (field.fieldInfo.FieldType.IsValueType || !ReferenceEquals(value, obj))
                             field.fieldInfo.SetValue(obj, Patch(value));
                         break;
                 }
             }
-            if (!isValueType) cache.Add(obj, obj);
             return obj;
         }
 
@@ -80,6 +85,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (array == null) return null;
             if (array is T[] tArray) return Patch(tArray);
             if (cache.TryGetValue(array, out var patched)) return (Array)patched;
+            cache.Add(array, array);
             for (int i = 0, length = array.Length; i < length; i++) {
                 var element = array.GetValue(i);
                 if (element == null)
@@ -90,19 +96,18 @@ namespace JLChnToZ.NDExtensions.Editors {
                 }
                 array.SetValue(Patch(element), i);
             }
-            cache.Add(array, array);
             return array;
         }
 
         public T[] Patch(T[] array) {
             if (array == null) return null;
             if (cache.TryGetValue(array, out var patched)) return (T[])patched;
+            cache.Add(array, array);
             for (int i = 0, length = array.Length; i < length; i++) {
                 var element = array[i];
                 if (patcher(ref element))
                     array[i] = element;
             }
-            cache.Add(array, array);
             return array;
         }   
 

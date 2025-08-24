@@ -99,7 +99,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                                                 new GUIContent(string.Join("/", menuPath)),
                                                 p.Key.propertyName == nameValue && p.Key.source == sourceValue,
                                                 UpdateProperty,
-                                                Tuple.Create(p.Key.propertyName, p.Key.source, p.Value, nameProp, typeProp, sourceProp)
+                                                Tuple.Create(p.Key.propertyName, p.Key.source, p.Value.type, nameProp, typeProp, sourceProp)
                                             );
                                             menuPath.Clear();
                                         }

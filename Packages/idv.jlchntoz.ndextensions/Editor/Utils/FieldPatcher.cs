@@ -68,15 +68,19 @@ namespace JLChnToZ.NDExtensions.Editors {
                 switch (field.fieldType) {
                     case FieldType.TargetType:
                         if (value is T tVal && patcher(ref tVal))
-                            field.fieldInfo.SetValue(obj, tVal);
+                            value = tVal;
+                        else continue;
                         break;
                     case FieldType.ScanRecursive:
                         if (value is Array array)
-                            field.fieldInfo.SetValue(obj, Patch(array));
+                            value = Patch(array);
                         else if (field.fieldInfo.FieldType.IsValueType || !ReferenceEquals(value, obj))
-                            field.fieldInfo.SetValue(obj, Patch(value));
+                            value = Patch(value);
+                        else continue;
                         break;
+                    default: continue;
                 }
+                if (!field.fieldInfo.IsInitOnly) field.fieldInfo.SetValue(obj, value);
             }
             return obj;
         }

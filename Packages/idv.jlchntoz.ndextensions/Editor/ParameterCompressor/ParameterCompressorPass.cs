@@ -44,11 +44,11 @@ namespace JLChnToZ.NDExtensions.Editors {
             readonly VirtualAnimatorController fx;
             readonly AAPContext aap;
             readonly HashSet<string> processParameters = new();
-            readonly List<VirtualState> allInputStates = new(), allOutputStates = new();
+            readonly List<VirtualState> allReceiveStates = new(), allSendStates = new();
             bool isPrepared;
             string syncParamName, syncParamRefName;
             VirtualStateMachine syncLayerRoot;
-            VirtualState rootInputState, rootOutputState;
+            VirtualState rootReceiveState, rootSendState;
             VirtualClip emptyDelayClip;
             int maxIndex;
 
@@ -92,10 +92,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                 syncParamName = GetUniqueParameter("__CompParam/Value", VRCParameterType.Int);
                 syncParamRefName = GetUniqueParameter("__CompParam/Ref", VRCParameterType.Int);
                 syncLayerRoot = fx.AddLayer(LayerPriority.Default, "Parameter Sync").StateMachine;
-                rootInputState = syncLayerRoot.AddState("Input Root", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
-                rootOutputState = syncLayerRoot.AddState("Output Root", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
-                syncLayerRoot.DefaultState = rootOutputState;
-                var transition = rootOutputState.ConnectTo(rootInputState);
+                rootReceiveState = syncLayerRoot.AddState("Receiver", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
+                rootSendState = syncLayerRoot.AddState("Sender", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
+                syncLayerRoot.DefaultState = rootReceiveState;
+                var transition = rootReceiveState.ConnectTo(rootSendState);
                 var localParameter = fx.EnsureParameter("IsLocal", AnimatorControllerParameterType.Bool, false);
                 switch (localParameter.type) {
                     case AnimatorControllerParameterType.Bool:
@@ -128,58 +128,58 @@ namespace JLChnToZ.NDExtensions.Editors {
                 fx.EnsureParameter(name, AnimatorControllerParameterType.Float, false);
                 int uniqueIndex = ++maxIndex;
 
-                var inputState = syncLayerRoot.AddState($"{name} Input", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
-                var inputModifier = inputState.WithParameterChange();
+                var receiverState = syncLayerRoot.AddState($"{name} Receive", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
+                var receiveModifier = receiverState.WithParameterChange();
                 switch (p.valueType) {
                     case VRCParameterType.Bool:
                     case VRCParameterType.Int:
-                        inputModifier.Copy(syncParamName, name);
+                        receiveModifier.Copy(syncParamName, name);
                         break;
                     case VRCParameterType.Float:
-                        inputModifier.Copy(syncParamName, name, 0, 254, -1, 1);
+                        receiveModifier.Copy(syncParamName, name, 0, 254, -1, 1);
                         break;
                 }
-                rootInputState.ConnectTo(inputState)
+                rootReceiveState.ConnectTo(receiverState)
                     .When(AnimatorConditionMode.Equals, syncParamRefName, uniqueIndex);
-                allInputStates.Add(inputState);
+                allReceiveStates.Add(receiverState);
 
                 var lastValue = aap.GetUniqueParameter($"{name}/__prev", p.defaultValue);
                 var diffValue = aap.GetUniqueParameter($"{name}/__diff", p.defaultValue);
                 aap.Subtract(name, lastValue, diffValue, -1, 1);
 
-                var outputState = syncLayerRoot.AddState($"{name} Output", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
-                var outputModifier = outputState.WithParameterChange();
+                var sendState = syncLayerRoot.AddState($"{name} Send", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
+                var sendModifier = sendState.WithParameterChange();
                 switch (p.valueType) {
                     case VRCParameterType.Bool:
                     case VRCParameterType.Int:
-                        outputModifier.Copy(name, syncParamName);
+                        sendModifier.Copy(name, syncParamName);
                         break;
                     case VRCParameterType.Float:
-                        outputModifier.Copy(name, syncParamName, -1, 1, 0, 254);
+                        sendModifier.Copy(name, syncParamName, -1, 1, 0, 254);
                         break;
                 }
-                outputModifier
+                sendModifier
                     .Copy(name, lastValue)
                     .Set(syncParamRefName, uniqueIndex);
-                rootOutputState.ConnectTo(outputState)
+                rootSendState.ConnectTo(sendState)
                     .When(AnimatorConditionMode.Less, diffValue, -0.0001F)
                     .Or()
                     .When(AnimatorConditionMode.Greater, diffValue, 0.0001F);
-                allOutputStates.Add(outputState);
+                allSendStates.Add(sendState);
             }
 
             public void FinalizeParameterConnections() {
-                for (int i = 0; i < allInputStates.Count; i++) {
-                    var state = allInputStates[i];
-                    state.Transitions = state.Transitions.AddRange(rootInputState.Transitions);
+                for (int i = 0; i < allReceiveStates.Count; i++) {
+                    var receiveState = allReceiveStates[i];
+                    receiveState.Transitions = receiveState.Transitions.AddRange(rootReceiveState.Transitions);
                 }
-                var outputTransitions = rootOutputState.Transitions.RemoveAll(t => t.DestinationState == rootInputState);
-                for (int i = 0; i < allOutputStates.Count; i++) {
-                    var state = allOutputStates[i];
-                    state.Transitions = state.Transitions.AddRange(outputTransitions);
-                    state.ConnectTo(allOutputStates[(i + 1) % allOutputStates.Count]).ExitTime(1);
+                var outputTransitions = rootSendState.Transitions.RemoveAll(t => t.DestinationState == rootReceiveState);
+                for (int i = 0; i < allSendStates.Count; i++) {
+                    var sendState = allSendStates[i];
+                    sendState.Transitions = sendState.Transitions.AddRange(outputTransitions);
+                    sendState.ConnectTo(allSendStates[(i + 1) % allSendStates.Count]).ExitTime(1);
                 }
-                rootOutputState.ConnectTo(allOutputStates[0]).ExitTime(1);
+                rootSendState.ConnectTo(allSendStates[0]).ExitTime(1);
                 asc.HarmonizeParameterTypes();
                 parametersObject.parameters = parameters.ToArray();
             }

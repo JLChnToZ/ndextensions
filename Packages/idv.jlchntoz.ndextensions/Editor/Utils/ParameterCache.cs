@@ -26,6 +26,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             foreach (var p in info) {
                 if (p.ParameterType == null ||
                     p.Namespace != ParameterNamespace.Animator ||
+                    p.IsHidden ||
                     p.Source != null && Array.IndexOf(ignoreComponents, p.Source.GetType()) >= 0)
                     continue;
                 parameters[(p.OriginalName, p.Source)] = (p.ParameterType.Value, p.WantSynced);

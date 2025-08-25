@@ -31,7 +31,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 #if VRC_SDK_VRCSDK3
             if (allParameters.Count == 0) return;
             var ctx = new ProcessorContext(context, threshold);
-            ctx.Prepare();
+            ctx.Prepare(allParameters.Count);
             foreach (var parameter in allParameters)
                 ctx.ProcessParameter(parameter);
             ctx.FinalizeParameterConnections();
@@ -47,13 +47,21 @@ namespace JLChnToZ.NDExtensions.Editors {
             readonly AAPContext aap;
             readonly HashSet<string> processParameters = new();
             readonly List<VirtualState> allReceiveStates = new(), allSendStates = new();
+            readonly float threshold;
             bool isPrepared;
-            string syncParamName, syncParamRefName;
+            string syncParamName;
+            string[] syncParamRefNames;
             VirtualStateMachine syncLayerRoot;
             VirtualState rootReceiveState, rootSendState;
             VirtualClip emptyDelayClip;
-            int maxIndex;
-            float threshold;
+            int indexCount;
+
+            static int CountBitOfSize(int i) {
+                i = Mathf.NextPowerOfTwo(i) - 1;
+                i -= (i >> 1) & 0x55555555;
+                i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
+                return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
+            }
 
             public ProcessorContext(BuildContext context, float threshold = 0.2F) {
                 asc = context.Extension<AnimatorServicesContext>();
@@ -90,11 +98,14 @@ namespace JLChnToZ.NDExtensions.Editors {
                 return param.name;
             }
 
-            public void Prepare() {
+            public void Prepare(int count) {
                 if (isPrepared) return;
                 emptyDelayClip = VirtualClip.Create("Delay").SetConstantClip<GameObject>($"Dummy_{Guid.NewGuid()}", "enabled", 1, threshold);
                 syncParamName = GetUniqueParameter("__CompParam/Value", VRCParameterType.Int);
-                syncParamRefName = GetUniqueParameter("__CompParam/Ref", VRCParameterType.Int);
+                int requiredBits = CountBitOfSize(count);
+                syncParamRefNames = new string[requiredBits];
+                for (int i = 0; i < requiredBits; i++)
+                    syncParamRefNames[i] = GetUniqueParameter($"__CompParam/Ref{i}", VRCParameterType.Bool);
                 syncLayerRoot = fx.AddLayer(LayerPriority.Default, "Parameter Sync").StateMachine;
                 rootReceiveState = syncLayerRoot.AddState("Receiver", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
                 rootSendState = syncLayerRoot.AddState("Sender", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
@@ -130,7 +141,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 p.networkSynced = false;
                 parameters[index] = p;
                 fx.EnsureParameter(name, AnimatorControllerParameterType.Float, false);
-                int uniqueIndex = ++maxIndex;
+                int uniqueIndex = ++indexCount;
 
                 var receiverState = syncLayerRoot.AddState($"{name} Receive", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
                 var receiveModifier = receiverState.WithParameterChange();
@@ -143,8 +154,12 @@ namespace JLChnToZ.NDExtensions.Editors {
                         receiveModifier.Copy(syncParamName, name, 0, 254, -1, 1);
                         break;
                 }
-                rootReceiveState.ConnectTo(receiverState)
-                    .When(AnimatorConditionMode.Equals, syncParamRefName, uniqueIndex);
+                var receiveTransition = rootReceiveState.ConnectTo(receiverState);
+                for (int i = 0; i < syncParamRefNames.Length; i++)
+                    receiveTransition.When(
+                        (uniqueIndex & (1 << i)) != 0 ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot,
+                        syncParamRefNames[i]
+                    );
                 allReceiveStates.Add(receiverState);
 
                 var lastValue = aap.GetUniqueParameter($"{name}/__prev", p.defaultValue);
@@ -162,9 +177,9 @@ namespace JLChnToZ.NDExtensions.Editors {
                         sendModifier.Copy(name, syncParamName, -1, 1, 0, 254);
                         break;
                 }
-                sendModifier
-                    .Copy(name, lastValue)
-                    .Set(syncParamRefName, uniqueIndex);
+                sendModifier.Copy(name, lastValue);
+                for (int i = 0; i < syncParamRefNames.Length; i++)
+                    sendModifier.Set(syncParamRefNames[i], (uniqueIndex & (1 << i)) != 0);
                 rootSendState.ConnectTo(sendState)
                     .When(AnimatorConditionMode.Less, diffValue, -0.0001F)
                     .Or()

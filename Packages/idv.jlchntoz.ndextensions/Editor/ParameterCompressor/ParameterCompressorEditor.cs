@@ -49,10 +49,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                         if (folded) expandedComponents.Add(component);
                         else expandedComponents.Remove(component);
                     }
-                    EditorGUILayout.EndFoldoutHeaderGroup();
                 }
-                if (!folded) continue;
-                using (new EditorGUI.IndentLevelScope())
+                if (folded)
                     foreach (var parameter in parameters) {
                         bool enabled = enabledParameters.Contains(parameter.reference);
                         bool newEnabled = EditorGUILayout.ToggleLeft(parameter.ToString(), enabled);
@@ -63,6 +61,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                             SaveEnabledParameters();
                         }
                     }
+                EditorGUILayout.EndFoldoutHeaderGroup();
             }
             serializedObject.ApplyModifiedProperties();
         }
@@ -102,7 +101,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var animator = target.GetComponentInParent<Animator>(true);
             if (animator != null) target = animator;
             foreach (var entry in ParameterInfo.ForUI.GetParametersForObject(target.gameObject)) {
-                if (!entry.WantSynced) continue;
+                if (!entry.WantSynced || entry.IsHidden) continue;
                 var source = entry.Source;
                 if (source == null) source = target;
                 if (!allParameters.TryGetValue(source, out var parameters)) {
@@ -164,7 +163,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             void SelectAll() {
                 parent.serializedObject.Update();
                 parent.LoadEnabledParameters();
-                foreach (var parameter in parent.allParameters[component])
+                if (!parent.allParameters.TryGetValue(component, out var parameters))
+                    return;
+                foreach (var parameter in parameters)
                     parent.enabledParameters.Add(parameter.reference);
                 parent.SaveEnabledParameters();
                 parent.serializedObject.ApplyModifiedProperties();
@@ -173,7 +174,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             void DeselectAll() {
                 parent.serializedObject.Update();
                 parent.LoadEnabledParameters();
-                foreach (var parameter in parent.allParameters[component])
+                if (!parent.allParameters.TryGetValue(component, out var parameters))
+                    return;
+                foreach (var parameter in parameters)
                     parent.enabledParameters.Remove(parameter.reference);
                 parent.SaveEnabledParameters();
                 parent.serializedObject.ApplyModifiedProperties();

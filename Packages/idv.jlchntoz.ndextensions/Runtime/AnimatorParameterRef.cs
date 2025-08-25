@@ -14,6 +14,12 @@ namespace JLChnToZ.NDExtensions {
              type == AnimatorControllerParameterType.Bool ||
              type == AnimatorControllerParameterType.Trigger);
 
+        public AnimatorParameterRef(string name, AnimatorControllerParameterType type, Component source = null) {
+            this.name = name;
+            this.type = type;
+            this.source = source;
+        }
+
         public readonly bool Equals(AnimatorParameterRef other) =>
             name == other.name &&
             type == other.type &&

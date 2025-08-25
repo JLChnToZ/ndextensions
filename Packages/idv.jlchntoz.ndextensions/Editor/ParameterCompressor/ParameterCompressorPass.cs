@@ -18,17 +18,19 @@ namespace JLChnToZ.NDExtensions.Editors {
     public class ParameterCompressorPass : Pass<ParameterCompressorPass> {
         protected override void Execute(BuildContext context) {
             var allParameters = new HashSet<string>();
+            float threshold = 0F;
             foreach (var component in context.AvatarRootObject.GetComponentsInChildren<ParameterCompressor>(true)) {
                 if (component == null || component.parameters == null) continue;
                 foreach (var parameter in component.parameters) {
                     if (string.IsNullOrEmpty(parameter.name)) continue;
                     allParameters.Add(parameter.name);
                 }
+                threshold = Math.Max(threshold, component.threshold);
                 UnityObject.DestroyImmediate(component);
             }
 #if VRC_SDK_VRCSDK3
             if (allParameters.Count == 0) return;
-            var ctx = new ProcessorContext(context);
+            var ctx = new ProcessorContext(context, threshold);
             ctx.Prepare();
             foreach (var parameter in allParameters)
                 ctx.ProcessParameter(parameter);
@@ -51,8 +53,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             VirtualState rootReceiveState, rootSendState;
             VirtualClip emptyDelayClip;
             int maxIndex;
+            float threshold;
 
-            public ProcessorContext(BuildContext context) {
+            public ProcessorContext(BuildContext context, float threshold = 0.2F) {
                 asc = context.Extension<AnimatorServicesContext>();
                 fx = asc.ControllerContext.Controllers[VRCLayerType.FX];
                 aap = AAPContext.ForController(fx);
@@ -69,6 +72,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                     descriptor.expressionParameters = parametersObject;
                 }
                 parameters = new(parametersObject.parameters);
+                this.threshold = threshold;
             }
 
             public string GetUniqueParameter(string name, VRCParameterType type, bool synced = true, float defaultValue = 0) {
@@ -88,7 +92,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
             public void Prepare() {
                 if (isPrepared) return;
-                emptyDelayClip = VirtualClip.Create("Delay").SetConstantClip<GameObject>($"Dummy_{Guid.NewGuid()}", "enabled", 1, 0.1F);
+                emptyDelayClip = VirtualClip.Create("Delay").SetConstantClip<GameObject>($"Dummy_{Guid.NewGuid()}", "enabled", 1, threshold);
                 syncParamName = GetUniqueParameter("__CompParam/Value", VRCParameterType.Int);
                 syncParamRefName = GetUniqueParameter("__CompParam/Ref", VRCParameterType.Int);
                 syncLayerRoot = fx.AddLayer(LayerPriority.Default, "Parameter Sync").StateMachine;
@@ -173,10 +177,17 @@ namespace JLChnToZ.NDExtensions.Editors {
                     var receiveState = allReceiveStates[i];
                     receiveState.Transitions = receiveState.Transitions.AddRange(rootReceiveState.Transitions);
                 }
-                var outputTransitions = rootSendState.Transitions.RemoveAll(t => t.DestinationState == rootReceiveState);
                 for (int i = 0; i < allSendStates.Count; i++) {
                     var sendState = allSendStates[i];
-                    sendState.Transitions = sendState.Transitions.AddRange(outputTransitions);
+                    int bi = -1;
+                    foreach (var transition in rootSendState.Transitions) {
+                        if (transition.DestinationState == rootReceiveState) continue;
+                        var clone = (transition.Clone() as VirtualStateTransition).ExitTime(1);
+                        sendState.Transitions = bi < 0 ?
+                            sendState.Transitions.Add(clone) :
+                            sendState.Transitions.Insert(bi++, clone);
+                        if (transition.DestinationState == sendState) bi = 0;
+                    }
                     sendState.ConnectTo(allSendStates[(i + 1) % allSendStates.Count]).ExitTime(1);
                 }
                 rootSendState.ConnectTo(allSendStates[0]).ExitTime(1);

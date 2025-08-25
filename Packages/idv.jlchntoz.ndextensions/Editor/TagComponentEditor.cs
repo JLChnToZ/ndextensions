@@ -21,7 +21,6 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         protected virtual void DrawFields() {
-            EditorGUILayout.LabelField("Test Title");
             var so = serializedObject;
             so.Update();
             var label = i18n[$"{typeName}:note"];
@@ -33,7 +32,6 @@ namespace JLChnToZ.NDExtensions.Editors {
                 while (iterator.NextVisible(false))
                     EditorGUILayout.PropertyField(iterator, true);
             so.ApplyModifiedProperties();
-            EditorGUILayout.LabelField("Test Title");
         }
     }
 }

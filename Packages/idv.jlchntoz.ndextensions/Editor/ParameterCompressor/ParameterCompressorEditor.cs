@@ -5,15 +5,57 @@ using UnityEditor;
 using nadena.dev.ndmf;
 using ACParameterType = UnityEngine.AnimatorControllerParameterType;
 using System.Runtime.CompilerServices;
+#if VRC_SDK_VRCSDK3
+using VRC.SDK3.Avatars.Components;
+using VRC.SDK3.Avatars.ScriptableObjects;
+#endif
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [ParameterProviderFor(typeof(ParameterCompressor))]
+    internal class ParameterCompressorProvider : IParameterProvider {
+        readonly ParameterCompressor parameterCompressor;
+
+        public ParameterCompressorProvider(ParameterCompressor parameterCompressor) =>
+            this.parameterCompressor = parameterCompressor;
+
+        public IEnumerable<ProvidedParameter> GetSuppliedParameters(BuildContext context = null) {
+            yield return new(
+                "__CompParam/Value",
+                ParameterNamespace.Animator,
+                parameterCompressor,
+                NDExtensionPlugin.Instance,
+                ACParameterType.Int
+            ) {
+                IsHidden = true,
+                WantSynced = true,
+            };
+            for (int i = 0, count = ParameterCompressorUtils.CountRequiredParameterBits((parameterCompressor.parameters?.Length ?? 0) + 1); i < count; i++)
+                yield return new(
+                    $"__CompParam/Ref{i}",
+                    ParameterNamespace.Animator,
+                    parameterCompressor,
+                    NDExtensionPlugin.Instance,
+                    ACParameterType.Bool
+                ) {
+                    IsHidden = true,
+                    WantSynced = true,
+                };
+        }
+    }
+
     [CustomEditor(typeof(ParameterCompressor))]
     public class ParameterCompressorEditor : TagComponentEditor {
+#if VRC_SDK_VRCSDK3
+        const int maxParameterCost = VRCExpressionParameters.MAX_PARAMETER_COST;
+#else
+        const int maxParameterCost = 0;
+#endif
         readonly ConditionalWeakTable<Component, ComponentMenu> componentMenus = new();
         SerializedProperty parametersProperty, thresholdProperty;
         readonly HashSet<AnimatorParameterRef> enabledParameters = new();
         readonly HashSet<Component> expandedComponents = new();
         readonly Dictionary<Component, HashSet<Parameter>> allParameters = new();
+        int currentParameterCost = 0, savedParameterCost = 0, savedParameterCount = 0, parameterBitCount = 0;
 
         protected override void OnEnable() {
             base.OnEnable();
@@ -26,6 +68,33 @@ namespace JLChnToZ.NDExtensions.Editors {
         protected override void DrawFields() {
             EditorGUILayout.HelpBox(i18n["ParameterCompressor:note"], MessageType.Info);
             serializedObject.Update();
+#if VRC_SDK_VRCSDK3
+            int diff = parameterBitCount - savedParameterCost;
+            int bits = currentParameterCost + diff;
+            int exceedBits = bits - maxParameterCost;
+            if (exceedBits > 0)
+                EditorGUILayout.HelpBox(string.Format(
+                    i18n["ParameterCompressor:exceed"],
+                    currentParameterCost, bits, maxParameterCost, exceedBits
+                ), MessageType.Warning);
+            else if (diff > 0)
+                EditorGUILayout.HelpBox(string.Format(
+                    i18n["ParameterCompressor:cost"],
+                    currentParameterCost, bits, maxParameterCost, diff
+                ), MessageType.Info);
+            else if (diff < 0)
+                EditorGUILayout.HelpBox(string.Format(
+                    i18n["ParameterCompressor:saved"],
+                    currentParameterCost, bits, maxParameterCost, -diff
+                ), MessageType.None);
+            else
+                EditorGUILayout.HelpBox(string.Format(
+                    i18n["ParameterCompressor:unchanged"],
+                    currentParameterCost, bits, maxParameterCost
+                ), MessageType.Info);
+#else
+            EditorGUILayout.HelpBox(i18n["ParameterCompressor:nosdk"], MessageType.Warning);
+#endif
             if (GUILayout.Button(i18n.GetContent("ParameterCompressor.refresh"))) {
                 RefreshAllParameters();
                 LoadEnabledParameters();
@@ -56,8 +125,9 @@ namespace JLChnToZ.NDExtensions.Editors {
                         bool newEnabled = EditorGUILayout.ToggleLeft(parameter.ToString(), enabled);
                         if (newEnabled != enabled) {
                             LoadEnabledParameters();
-                            if (newEnabled) enabledParameters.Add(parameter.reference);
-                            else enabledParameters.Remove(parameter.reference);
+                            if (newEnabled) AddParameter(parameter.reference);
+                            else RemoveParameter(parameter.reference);
+                            UpdateBitCount();
                             SaveEnabledParameters();
                         }
                     }
@@ -68,16 +138,26 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         void LoadEnabledParameters() {
             enabledParameters.Clear();
+            savedParameterCost = 0;
+            savedParameterCount = 0;
             foreach (SerializedProperty parameter in parametersProperty) {
-                var nameProp = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.name));
-                var typeProp = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.type));
-                var sourceProp = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.source));
-                enabledParameters.Add(new(
-                    nameProp.stringValue,
-                    (ACParameterType)typeProp.intValue,
-                    sourceProp.objectReferenceValue as Component
-                ));
+                var name = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.name)).stringValue;
+                var type = (ACParameterType)parameter.FindPropertyRelative(nameof(AnimatorParameterRef.type)).intValue;
+                var source = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.source)).objectReferenceValue as Component;
+                var entry = new AnimatorParameterRef(name, type, source);
+                enabledParameters.Add(entry);
+                if (allParameters.TryGetValue(source, out var parameters) &&
+                    parameters.Contains(new(entry))) {
+                    savedParameterCost += type switch {
+                        ACParameterType.Float => 8,
+                        ACParameterType.Int => 8,
+                        ACParameterType.Bool => 1,
+                        _ => 0,
+                    };
+                    savedParameterCount++;
+                }
             }
+            UpdateBitCount();
         }
 
         void SaveEnabledParameters() {
@@ -94,27 +174,59 @@ namespace JLChnToZ.NDExtensions.Editors {
         void RefreshAllParameters() {
             var target = this.target as Component;
             if (target == null) return;
-#if VRC_SDK_VRCSDK3
-            var descriptor = target.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true);
-            if (descriptor != null) target = descriptor;
-#endif
             var animator = target.GetComponentInParent<Animator>(true);
             if (animator != null) target = animator;
+#if VRC_SDK_VRCSDK3
+            var descriptor = target.GetComponentInParent<VRCAvatarDescriptor>(true);
+            if (descriptor != null) target = descriptor;
+#endif
+            currentParameterCost = 0;
             foreach (var entry in ParameterInfo.ForUI.GetParametersForObject(target.gameObject)) {
-                if (!entry.WantSynced || entry.IsHidden) continue;
-                var source = entry.Source;
-                if (source == null) source = target;
-                if (!allParameters.TryGetValue(source, out var parameters)) {
-                    parameters = new();
-                    allParameters[source] = parameters;
-                }
-                switch (entry.Namespace) {
-                    case ParameterNamespace.Animator:
+                if (!entry.WantSynced) continue;
+                if (!entry.IsHidden) {
+                    var source = entry.Source;
+                    if (source == null) source = target;
+                    if (!allParameters.TryGetValue(source, out var parameters)) {
+                        parameters = new();
+                        allParameters[source] = parameters;
+                    }
+                    if (entry.Namespace == ParameterNamespace.Animator)
                         parameters.Add(new(entry));
-                        break;
                 }
+                if (entry.Namespace == ParameterNamespace.Animator)
+                    currentParameterCost += entry.ParameterType switch {
+                        ACParameterType.Float => 8,
+                        ACParameterType.Int => 8,
+                        ACParameterType.Bool => 1,
+                        _ => 0,
+                    };
             }
         }
+
+        void AddParameter(in AnimatorParameterRef parameter) {
+            if (!enabledParameters.Add(parameter)) return;
+            savedParameterCost += parameter.type switch {
+                ACParameterType.Float => 8,
+                ACParameterType.Int => 8,
+                ACParameterType.Bool => 1,
+                _ => 0,
+            };
+            savedParameterCount++;
+        }
+
+        void RemoveParameter(in AnimatorParameterRef parameter) {
+            if (!enabledParameters.Remove(parameter)) return;
+            savedParameterCost -= parameter.type switch {
+                ACParameterType.Float => 8,
+                ACParameterType.Int => 8,
+                ACParameterType.Bool => 1,
+                _ => 0,
+            };
+            savedParameterCount--;
+        }
+
+        void UpdateBitCount() =>
+            parameterBitCount = savedParameterCount > 0 ? ParameterCompressorUtils.CountRequiredParameterBits(savedParameterCount + 1) + 8 : 0;
 
         readonly struct Parameter : IEquatable<Parameter> {
             public readonly AnimatorParameterRef reference;
@@ -127,6 +239,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                     reference.Source
                 );
                 effectiveName = reference.EffectiveName;
+            }
+
+            public Parameter(AnimatorParameterRef reference) {
+                this.reference = reference;
+                effectiveName = reference.name;
             }
 
             public bool Equals(Parameter other) => reference.Equals(other.reference);
@@ -166,7 +283,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                 if (!parent.allParameters.TryGetValue(component, out var parameters))
                     return;
                 foreach (var parameter in parameters)
-                    parent.enabledParameters.Add(parameter.reference);
+                    parent.AddParameter(parameter.reference);
+                parent.UpdateBitCount();
                 parent.SaveEnabledParameters();
                 parent.serializedObject.ApplyModifiedProperties();
             }
@@ -177,7 +295,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                 if (!parent.allParameters.TryGetValue(component, out var parameters))
                     return;
                 foreach (var parameter in parameters)
-                    parent.enabledParameters.Remove(parameter.reference);
+                    parent.RemoveParameter(parameter.reference);
+                parent.UpdateBitCount();
                 parent.SaveEnabledParameters();
                 parent.serializedObject.ApplyModifiedProperties();
             }

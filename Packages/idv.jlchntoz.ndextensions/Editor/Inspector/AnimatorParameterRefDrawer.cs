@@ -14,12 +14,12 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         static ParameterCache GetCache(Component target, Type[] ignoreComponents = null, bool forceRefresh = false) {
             if (target == null) return null;
+            var animator = target.GetComponentInParent<Animator>(true);
+            if (animator != null) target = animator;
 #if VRC_SDK_VRCSDK3
             var descriptor = target.GetComponentInParent<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true);
             if (descriptor != null) target = descriptor;
 #endif
-            var animator = target.GetComponentInParent<Animator>(true);
-            if (animator != null) target = animator;
             if (!parameterCacheMap.TryGetValue(target, out var cache)) {
                 cache = new ParameterCache(target.gameObject, ignoreComponents);
                 parameterCacheMap.Add(target, cache);

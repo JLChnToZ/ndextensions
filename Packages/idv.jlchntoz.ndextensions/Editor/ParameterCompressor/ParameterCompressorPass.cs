@@ -15,6 +15,22 @@ using VRCLayerType = VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerTy
 #endif
 
 namespace JLChnToZ.NDExtensions.Editors {
+    internal static class ParameterCompressorUtils {
+        public static int CountRequiredParameterBits(int i) {
+            i |= i >> 1;
+            i |= i >> 2;
+            i |= i >> 4;
+            i |= i >> 8;
+            i |= i >> 16;
+            i = (i & 0x55555555) + ((i >> 1) & 0x55555555);
+            i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
+            i = (i & 0x0F0F0F0F) + ((i >> 4) & 0x0F0F0F0F);
+            i = (i & 0x00FF00FF) + ((i >> 8) & 0x00FF00FF);
+            i = (i & 0x0000FFFF) + ((i >> 16) & 0x0000FFFF);
+            return i;
+        }
+    }
+
     public class ParameterCompressorPass : Pass<ParameterCompressorPass> {
         protected override void Execute(BuildContext context) {
             var allParameters = new HashSet<string>();
@@ -56,13 +72,6 @@ namespace JLChnToZ.NDExtensions.Editors {
             VirtualClip emptyDelayClip;
             int indexCount;
 
-            static int CountBitOfSize(int i) {
-                i = Mathf.NextPowerOfTwo(i) - 1;
-                i -= (i >> 1) & 0x55555555;
-                i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
-                return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
-            }
-
             public ProcessorContext(BuildContext context, float threshold = 0.2F) {
                 asc = context.Extension<AnimatorServicesContext>();
                 fx = asc.ControllerContext.Controllers[VRCLayerType.FX];
@@ -102,7 +111,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 if (isPrepared) return;
                 emptyDelayClip = VirtualClip.Create("Delay").SetConstantClip<GameObject>($"Dummy_{Guid.NewGuid()}", "enabled", 1, threshold);
                 syncParamName = GetUniqueParameter("__CompParam/Value", VRCParameterType.Int);
-                int requiredBits = CountBitOfSize(count);
+                int requiredBits = ParameterCompressorUtils.CountRequiredParameterBits(count);
                 syncParamRefNames = new string[requiredBits];
                 for (int i = 0; i < requiredBits; i++)
                     syncParamRefNames[i] = GetUniqueParameter($"__CompParam/Ref{i}", VRCParameterType.Bool);

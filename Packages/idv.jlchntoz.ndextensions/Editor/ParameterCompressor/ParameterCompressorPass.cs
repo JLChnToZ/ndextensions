@@ -4,6 +4,8 @@ using nadena.dev.ndmf;
 using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [RunsOnPlatforms(WellKnownPlatforms.VRChatAvatar30)]
+    [DependsOnContext(typeof(ParameterCompressorContext))]
     public class ParameterCompressorPrePass : Pass<ParameterCompressorPrePass> {
         protected override void Execute(BuildContext context) {
             var ctx = context.Extension<ParameterCompressorContext>();
@@ -16,6 +18,8 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
     }
 
+    [RunsOnPlatforms(WellKnownPlatforms.VRChatAvatar30)]
+    [DependsOnContext(typeof(ParameterCompressorContext))]
     public class ParameterCompressorPass : Pass<ParameterCompressorPass> {
         protected override void Execute(BuildContext context) {
             var allParameters = new HashSet<string>();

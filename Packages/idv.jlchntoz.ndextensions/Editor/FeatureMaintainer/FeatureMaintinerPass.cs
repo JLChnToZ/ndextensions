@@ -11,6 +11,8 @@ using nadena.dev.ndmf.animator;
 using static UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [RunsOnPlatforms(WellKnownPlatforms.VRChatAvatar30)]
+    [DependsOnContext(typeof(AnimatorServicesContext))]
     public sealed class FeatureMaintainerPass : Pass<FeatureMaintainerPass> {
         public override string DisplayName => "Feature Maintainer";
 

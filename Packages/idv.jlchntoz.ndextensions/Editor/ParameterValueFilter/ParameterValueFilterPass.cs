@@ -9,6 +9,8 @@ using nadena.dev.ndmf.animator;
 using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [RunsOnAllPlatforms]
+    [DependsOnContext(typeof(AnimatorServicesContext))]
     public sealed class ParameterValueFilterPass : Pass<ParameterValueFilterPass> {
         protected override void Execute(BuildContext context) {
             var extContext = context.Extension<AnimatorServicesContext>();

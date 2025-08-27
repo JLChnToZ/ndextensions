@@ -8,6 +8,9 @@ using nadena.dev.ndmf.animator;
 using static UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [RunsOnAllPlatforms]
+    [DependsOnContext(typeof(RebakeHumanoidContext))]
+    [DependsOnContext(typeof(AnimatorServicesContext))]
     class RebakeHumanoidPass : Pass<RebakeHumanoidPass> {
         public override string DisplayName => "Rebake Humanoid";
 

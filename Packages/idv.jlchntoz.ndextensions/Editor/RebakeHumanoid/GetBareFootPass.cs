@@ -2,6 +2,8 @@ using UnityEngine;
 using nadena.dev.ndmf;
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [RunsOnAllPlatforms]
+    [DependsOnContext(typeof(RebakeHumanoidContext))]
     class GetBareFootPass : Pass<GetBareFootPass> {
         protected override void Execute(BuildContext ctx) {
             if (!ctx.AvatarRootObject.TryGetComponent(out RebakeHumanoid declaration) ||

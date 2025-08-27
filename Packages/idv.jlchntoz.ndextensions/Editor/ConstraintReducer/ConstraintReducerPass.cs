@@ -13,6 +13,8 @@ using nadena.dev.ndmf.animator;
 using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [RunsOnAllPlatforms]
+    [DependsOnContext(typeof(AnimatorServicesContext))]
     public class ConstraintReducerPass : Pass<ConstraintReducerPass> {
         const Axis ALL_AXES = Axis.X | Axis.Y | Axis.Z;
         readonly Queue<Transform> tempTransformQueue = new();

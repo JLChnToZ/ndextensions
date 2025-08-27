@@ -1,6 +1,3 @@
-using System;
-using System.Linq;
-using System.Reflection;
 using System.Collections.Generic;
 using UnityEngine;
 using nadena.dev.ndmf;
@@ -8,6 +5,7 @@ using nadena.dev.ndmf;
 using NDMFParameterInfo = nadena.dev.ndmf.ParameterInfo;
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [RunsOnAllPlatforms]
     sealed class ParameterResolverPass : Pass<ParameterResolverPass> {
         FieldPatcher<AnimatorParameterRef> fieldPatcher;
         readonly Dictionary<Component, IReadOnlyDictionary<(ParameterNamespace, string), ParameterMapping>> sourceToMappings = new();

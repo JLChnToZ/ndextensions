@@ -12,32 +12,44 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         protected override void Configure() {
             InPhase(BuildPhase.Resolving)
+            .Run(ParameterResolverPass.Instance);
+            InPhase(BuildPhase.Resolving)
             .WithRequiredExtension(
                 typeof(RebakeHumanoidContext),
-                seq => {
-                    seq.Run(GetBareFootPass.Instance);
-                    seq.Run(ParameterResolverPass.Instance);
-                }
+                seq => seq.Run(GetBareFootPass.Instance)
             );
             InPhase(BuildPhase.Transforming)
             .AfterPlugin("nadena.dev.modular-avatar")
             .WithRequiredExtension(
                 typeof(AnimatorServicesContext),
                 seq => {
+                    seq.OnPlatforms(
+                        new[] { WellKnownPlatforms.VRChatAvatar30 },
+                        seq2 => seq2.Run(FeatureMaintainerPass.Instance)
+                    );
                     seq.Run(ParameterValueFilterPass.Instance);
-                    seq.Run(FeatureMaintainerPass.Instance);
                     seq.Run(ConstraintReducerPass.Instance);
                     seq.WithRequiredExtension(
                         typeof(RebakeHumanoidContext),
                         seq2 => seq2.Run(RebakeHumanoidPass.Instance)
                     );
+                    seq.OnPlatforms(
+                        new[] { WellKnownPlatforms.VRChatAvatar30 },
+                        seq2 => seq2.WithRequiredExtension(
+                            typeof(ParameterCompressorContext),
+                            seq3 => seq3.Run(ParameterCompressorPrePass.Instance)
+                        )
+                    );
                 }
             );
             InPhase(BuildPhase.Optimizing)
             .BeforePlugin("com.anatawa12.avatar-optimizer")
-            .WithRequiredExtension(
-                typeof(AnimatorServicesContext),
-                seq => seq.Run(ParameterCompressorPass.Instance)
+            .OnPlatforms(
+                new[] { WellKnownPlatforms.VRChatAvatar30 },
+                seq => seq.WithRequiredExtension(
+                    typeof(ParameterCompressorContext),
+                    seq2 => seq2.Run(ParameterCompressorPass.Instance)
+                )
             );
         }
     }

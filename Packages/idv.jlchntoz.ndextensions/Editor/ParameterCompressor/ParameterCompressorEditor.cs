@@ -29,7 +29,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 IsHidden = true,
                 WantSynced = true,
             };
-            for (int i = 0, count = ParameterCompressorUtils.CountRequiredParameterBits((parameterCompressor.parameters?.Length ?? 0) + 1); i < count; i++)
+            for (int i = 0, count = ParameterCompressorContext.CountRequiredParameterBits((parameterCompressor.parameters?.Length ?? 0) + 1); i < count; i++)
                 yield return new(
                     $"__CompParam/Ref{i}",
                     ParameterNamespace.Animator,
@@ -226,7 +226,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void UpdateBitCount() =>
-            parameterBitCount = savedParameterCount > 0 ? ParameterCompressorUtils.CountRequiredParameterBits(savedParameterCount + 1) + 8 : 0;
+            parameterBitCount = savedParameterCount > 0 ? ParameterCompressorContext.CountRequiredParameterBits(savedParameterCount + 1) + 8 : 0;
 
         readonly struct Parameter : IEquatable<Parameter> {
             public readonly AnimatorParameterRef reference;

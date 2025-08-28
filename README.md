@@ -45,6 +45,12 @@ This is a tool that filters parameter value using [Animated Animator Parameters 
 
 To use this tool, just add this component (JLChnToZ > Non-Destructive Extensions > Parameter Value Filter) to any game object under your avatar hierarchy.
 
+### Parameter Compressor
+
+This is a component that reduces synchronized parameters by alternating parameter slots. Depends on how many parameters you want to reduce, it can compress usage to 10 bits up to 3 parameters, 11 bits up to 7 parameters, 12 bits up to 15 parameters, etc. Unlike similar tools that other made (like the one that not work very well with NDMF tools), this one allows you to select which parameter need to be compressed, parameters created by other NDMF based tools also supported.
+
+To use this tool, just add this component (JLChnToZ > Non-Destructive Extensions > Parameter Compressor) to any game object under your avatar hierarchy.
+
 ### Others
 
 There will be other tools available when needed/requested. So stay tuned.

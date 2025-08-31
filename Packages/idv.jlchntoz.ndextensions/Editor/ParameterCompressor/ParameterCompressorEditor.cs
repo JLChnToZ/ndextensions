@@ -29,7 +29,14 @@ namespace JLChnToZ.NDExtensions.Editors {
                 IsHidden = true,
                 WantSynced = true,
             };
-            for (int i = 0, count = ParameterCompressorContext.CountRequiredParameterBits((parameterCompressor.parameters?.Length ?? 0) + 1); i < count; i++)
+            int parameterCount = 0, boolsCount = 0;
+            if (parameterCompressor.parameters != null)
+                for (int i = 0; i < parameterCompressor.parameters.Length; i++) {
+                    var p = parameterCompressor.parameters[i];
+                    if (p.type == ACParameterType.Bool) boolsCount++;
+                    else parameterCount++;
+                }
+            for (int i = 0, count = ParameterCompressorContext.CountRequiredParameterBits(parameterCount, boolsCount); i < count; i++)
                 yield return new(
                     $"__CompParam/Ref{i}",
                     ParameterNamespace.Animator,
@@ -55,7 +62,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         readonly HashSet<AnimatorParameterRef> enabledParameters = new();
         readonly HashSet<Component> expandedComponents = new();
         readonly Dictionary<Component, HashSet<Parameter>> allParameters = new();
-        int currentParameterCost = 0, savedParameterCost = 0, savedParameterCount = 0, parameterBitCount = 0;
+        int currentParameterCost = 0, savedParameterCost = 0, savedParameterCount = 0, savedBoolParameterCount = 0, parameterBitCount = 0;
 
         protected override void OnEnable() {
             base.OnEnable();
@@ -140,6 +147,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             enabledParameters.Clear();
             savedParameterCost = 0;
             savedParameterCount = 0;
+            savedBoolParameterCount = 0;
             foreach (SerializedProperty parameter in parametersProperty) {
                 var name = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.name)).stringValue;
                 var type = (ACParameterType)parameter.FindPropertyRelative(nameof(AnimatorParameterRef.type)).intValue;
@@ -154,7 +162,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                         ACParameterType.Bool => 1,
                         _ => 0,
                     };
-                    savedParameterCount++;
+                    if (type == ACParameterType.Bool)
+                        savedBoolParameterCount++;
+                    else
+                        savedParameterCount++;
                 }
             }
             UpdateBitCount();
@@ -211,7 +222,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                 ACParameterType.Bool => 1,
                 _ => 0,
             };
-            savedParameterCount++;
+            if (parameter.type == ACParameterType.Bool)
+                savedBoolParameterCount++;
+            else
+                savedParameterCount++;
         }
 
         void RemoveParameter(in AnimatorParameterRef parameter) {
@@ -222,11 +236,15 @@ namespace JLChnToZ.NDExtensions.Editors {
                 ACParameterType.Bool => 1,
                 _ => 0,
             };
-            savedParameterCount--;
+            if (parameter.type == ACParameterType.Bool)
+                savedBoolParameterCount--;
+            else
+                savedParameterCount--;
         }
 
-        void UpdateBitCount() =>
-            parameterBitCount = savedParameterCount > 0 ? ParameterCompressorContext.CountRequiredParameterBits(savedParameterCount + 1) + 8 : 0;
+        void UpdateBitCount() => parameterBitCount = savedParameterCount > 0 || savedBoolParameterCount > 0 ?
+            ParameterCompressorContext.CountRequiredParameterBits(savedParameterCount, savedBoolParameterCount) + 8 :
+            0;
 
         readonly struct Parameter : IEquatable<Parameter> {
             public readonly AnimatorParameterRef reference;

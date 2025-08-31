@@ -101,6 +101,19 @@ namespace JLChnToZ.NDExtensions.Editors {
         public static VirtualState AddState(this VirtualLayer layer, string name, VirtualMotion motion = null) =>
             layer.StateMachine.AddState(name, motion);
 
+            
+        public static VirtualStateMachine AddStateMachine(this VirtualStateMachine parent, string name = "", Vector3? position = null) {
+            var stateMachine = VirtualStateMachine.Create(null, name);
+            parent.StateMachines = parent.StateMachines.Add(new VirtualStateMachine.VirtualChildStateMachine {
+                StateMachine = stateMachine,
+                Position = position ?? (new Vector3(10, 10) * (parent.StateMachines.Count + parent.States.Count)),
+            });
+            return stateMachine;
+        }
+
+        public static VirtualStateMachine AddStateMachine(this VirtualLayer layer, string name = "", Vector3? position = null) =>
+            layer.StateMachine.AddStateMachine(name, position);
+
         public static VirtualState WriteDefaults(this VirtualState state, bool write = true) {
             state.WriteDefaultValues = write;
             return state;
@@ -161,7 +174,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             return trans;
         }
 
-        public static VirtualStateTransition ConnectTo(this VirtualStateMachine from, VirtualState to) {
+        public static VirtualStateTransition AnyConnectTo(this VirtualStateMachine from, VirtualState to) {
             var trans = CreateStateTransition();
             trans.SetDestination(to);
             from.AnyStateTransitions = from.AnyStateTransitions.Add(trans);
@@ -169,7 +182,18 @@ namespace JLChnToZ.NDExtensions.Editors {
             return trans;
         }
 
-        public static VirtualStateTransition ConnectTo(this VirtualStateMachine from, VirtualStateMachine to) {
+        public static VirtualTransition ConnectTo(this VirtualStateMachine from, VirtualState to, VirtualStateMachine parent) {
+            var trans = VirtualTransition.Create();
+            trans.SetDestination(to);
+            if (!parent.StateMachineTransitions.TryGetValue(from, out var transitions))
+                transitions = ImmutableList<VirtualTransition>.Empty;
+            transitions = transitions.Add(trans);
+            parent.StateMachineTransitions = parent.StateMachineTransitions.SetItem(from, transitions);
+            transitionSources.Add(trans, from);
+            return trans;
+        }
+
+        public static VirtualStateTransition AnyConnectTo(this VirtualStateMachine from, VirtualStateMachine to) {
             var trans = CreateStateTransition();
             trans.SetDestination(to);
             from.AnyStateTransitions = from.AnyStateTransitions.Add(trans);
@@ -177,14 +201,52 @@ namespace JLChnToZ.NDExtensions.Editors {
             return trans;
         }
 
-        public static VirtualStateTransition ConnectTo(this VirtualLayer from, VirtualState to) =>
-            from.StateMachine.ConnectTo(to);
+        public static VirtualTransition ConnectTo(this VirtualStateMachine from, VirtualStateMachine to, VirtualStateMachine parent) {
+            var trans = VirtualTransition.Create();
+            trans.SetDestination(to);
+            if (!parent.StateMachineTransitions.TryGetValue(from, out var transitions))
+                transitions = ImmutableList<VirtualTransition>.Empty;
+            transitions = transitions.Add(trans);
+            parent.StateMachineTransitions = parent.StateMachineTransitions.SetItem(from, transitions);
+            transitionSources.Add(trans, from);
+            return trans;
+        }
 
-        public static VirtualStateTransition ConnectTo(this VirtualLayer from, VirtualStateMachine to) =>
-            from.StateMachine.ConnectTo(to);
+        public static VirtualStateTransition AnyConnectTo(this VirtualLayer from, VirtualState to) =>
+            from.StateMachine.AnyConnectTo(to);
 
-        public static VirtualStateTransition ConnectTo(this VirtualStateMachine from, VirtualLayer to) =>
-            from.ConnectTo(to.StateMachine);
+        public static VirtualStateTransition AnyConnectTo(this VirtualLayer from, VirtualStateMachine to) =>
+            from.StateMachine.AnyConnectTo(to);
+
+        public static VirtualStateTransition AnyConnectTo(this VirtualStateMachine from, VirtualLayer to) =>
+            from.AnyConnectTo(to.StateMachine);
+
+        public static VirtualStateTransition ConnectTo(this VirtualState from, VirtualNode to) {
+            if (to is VirtualState state) return ConnectTo(from, state);
+            if (to is VirtualStateMachine sm) return ConnectTo(from, sm);
+            if (to is VirtualLayer layer) return ConnectTo(from, layer);
+            return null;
+        }
+
+        public static VirtualStateTransition AnyConnectTo(this VirtualStateMachine from, VirtualNode to) {
+            if (to is VirtualState state) return AnyConnectTo(from, state);
+            if (to is VirtualStateMachine sm) return AnyConnectTo(from, sm);
+            if (to is VirtualLayer layer) return AnyConnectTo(from, layer);
+            return null;
+        }
+
+        public static VirtualTransition ConnectTo(this VirtualStateMachine from, VirtualNode to, VirtualStateMachine parent) {
+            if (to is VirtualState state) return ConnectTo(from, state, parent);
+            if (to is VirtualStateMachine sm) return ConnectTo(from, sm, parent);
+            if (to is VirtualLayer layer) return ConnectTo(from, layer, parent);
+            return null;
+        }
+
+        public static VirtualTransitionBase ConnectTo(this VirtualLayer from, VirtualNode to, VirtualStateMachine parent) =>
+            from.StateMachine.ConnectTo(to, parent);
+
+        public static VirtualTransition ConnectTo(this VirtualStateMachine from, VirtualLayer to, VirtualStateMachine parent) =>
+            from.ConnectTo(to.StateMachine, parent);
 
         public static VirtualTransition BeginWith(this VirtualStateMachine machine, VirtualState state) {
             var trans = VirtualTransition.Create();
@@ -202,11 +264,21 @@ namespace JLChnToZ.NDExtensions.Editors {
             return trans;
         }
 
+        public static VirtualTransition BeginWith(this VirtualStateMachine machine, VirtualNode node) {
+            if (node is VirtualState state) return machine.BeginWith(state);
+            if (node is VirtualStateMachine sm) return machine.BeginWith(sm);
+            if (node is VirtualLayer layer) return machine.BeginWith(layer);
+            return null;
+        }
+
         public static VirtualTransition BeginWith(this VirtualLayer layer, VirtualState state) =>
             layer.StateMachine.BeginWith(state);
 
         public static VirtualTransition BeginWith(this VirtualLayer layer, VirtualStateMachine state) =>
             layer.StateMachine.BeginWith(state);
+
+        public static VirtualTransition BeginWith(this VirtualLayer layer, VirtualNode node) =>
+            layer.StateMachine.BeginWith(node);
 
         public static VirtualStateTransition ExitTo(this VirtualState state) {
             var trans = CreateStateTransition();
@@ -244,7 +316,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             return transition;
         }
 
-        public static VirtualStateTransition When(this VirtualStateTransition transition, AnimatorConditionMode mode, string parameter, float value = 1) {
+        public static T When<T>(this T transition, AnimatorConditionMode mode, string parameter, float value = 1) where T : VirtualTransitionBase {
             switch (mode) {
                 case AnimatorConditionMode.If:
                     if (value <= 0) mode = AnimatorConditionMode.IfNot;
@@ -263,7 +335,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             return transition;
         }
 
-        public static VirtualStateTransition When(this VirtualStateTransition transition, AnimatorConditionMode mode, string parameter, bool value) =>
+        public static T When<T>(this T transition, AnimatorConditionMode mode, string parameter, bool value) where T : VirtualTransitionBase =>
             transition.When(mode, parameter, value ? 1 : 0);
 
         public static VirtualTransition Or(this VirtualTransition transition) {
@@ -288,6 +360,25 @@ namespace JLChnToZ.NDExtensions.Editors {
                 transitionSources.Add(clone, source);
             }
             return clone;
+        }
+
+        public static VirtualTransition CopyAsTransition(this VirtualTransitionBase transition) =>
+            Copy(transition, VirtualTransition.Create());
+
+        public static VirtualStateTransition CopyAsStateTransition(this VirtualTransitionBase transition) =>
+            Copy(transition, VirtualStateTransition.Create());
+
+        static T Copy<T>(VirtualTransitionBase source, T destination) where T : VirtualTransitionBase {
+            if (source.DestinationState != null)
+                destination.SetDestination(source.DestinationState);
+            else if (source.DestinationStateMachine != null)
+                destination.SetDestination(source.DestinationStateMachine);
+            else if (source.IsExit)
+                destination.SetExitDestination();
+            destination.Conditions = source.Conditions;
+            if (source.Solo) destination.Solo = true;
+            if (source.Mute) destination.Mute = true;
+            return destination;
         }
 
         public static VirtualStateTransition ExitTime(this VirtualStateTransition transition, float exitTime = 0) {

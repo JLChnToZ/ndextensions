@@ -5,10 +5,13 @@ using UnityEditor.Animations;
 using nadena.dev.ndmf;
 using UnityObject = UnityEngine.Object;
 #if VRC_SDK_VRCSDK3
+using System.Collections.Immutable;
+using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
 using nadena.dev.ndmf.util;
 using nadena.dev.ndmf.animator;
 using nadena.dev.ndmf.vrchat;
+using ACParameterType = UnityEngine.AnimatorControllerParameterType;
 using VRCParameter = VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.Parameter;
 using VRCParameterType = VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.ValueType;
 using VRCLayerType = VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType;
@@ -17,7 +20,8 @@ using VRCLayerType = VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerTy
 namespace JLChnToZ.NDExtensions.Editors {
     [DependsOnContext(typeof(AnimatorServicesContext))]
     public class ParameterCompressorContext : IExtensionContext {
-        public static int CountRequiredParameterBits(int i) {
+        public static int CountRequiredParameterBits(int i, int b) {
+            i += (b + 15) >> 3;
             i |= i >> 1;
             i |= i >> 2;
             i |= i >> 4;
@@ -34,9 +38,11 @@ namespace JLChnToZ.NDExtensions.Editors {
         void IExtensionContext.OnDeactivate(BuildContext context) { }
 
 #if VRC_SDK_VRCSDK3
+        const float changeThreshold = 1F / 128F;
         readonly Dictionary<string, VRCParameter> parameterWillProcess = new();
         readonly HashSet<string> processParameters = new();
-        readonly List<VirtualState> allReceiveStates = new(), allSendStates = new();
+        readonly List<VirtualNode> allReceiveStates = new(), allSendStates = new();
+        readonly List<string> boolParameters = new(8);
         VRCExpressionParameters parametersObject;
         List<VRCParameter> parameters;
         AnimatorServicesContext asc;
@@ -44,10 +50,17 @@ namespace JLChnToZ.NDExtensions.Editors {
         AAPContext aap;
         string syncParamName;
         string[] syncParamRefNames;
-        VirtualStateMachine syncLayerRoot;
-        VirtualState rootReceiveState, rootSendState;
+        VirtualStateMachine syncLayerRoot, rootReceiverSM, rootSenderSM;
         VirtualClip emptyDelayClip;
-        int indexCount;
+        int indexCount, totalCount;
+
+        static bool IsFlagOn(int flags, int bit) => (flags & (1 << bit)) != 0;
+
+        static AnimatorConditionMode ToConditionMode(bool value, ACParameterType type) => type switch {
+            ACParameterType.Bool => value ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot,
+            ACParameterType.Int => value ? AnimatorConditionMode.NotEqual : AnimatorConditionMode.Equals,
+            _ => value ? AnimatorConditionMode.Greater : AnimatorConditionMode.Less,
+        };
 
         public void OnActivate(BuildContext context) {
             asc = context.Extension<AnimatorServicesContext>();
@@ -68,42 +81,51 @@ namespace JLChnToZ.NDExtensions.Editors {
             parameters = new(parametersObject.parameters);
         }
 
-        public void Init(int parameterCount, float threshold) {
+        public void Init(int parameterCount, int boolsCount, float threshold) {
             emptyDelayClip = VirtualClip.Create("Delay").SetConstantClip<GameObject>($"Dummy_{Guid.NewGuid()}", "enabled", 1, threshold);
             syncParamName = GetUniqueParameter("__CompParam/Value", VRCParameterType.Int);
-            int requiredBits = CountRequiredParameterBits(parameterCount);
+            totalCount = parameterCount + (boolsCount + 7) / 8;
+            int requiredBits = CountRequiredParameterBits(parameterCount, boolsCount);
             syncParamRefNames = new string[requiredBits];
             for (int i = 0; i < requiredBits; i++)
                 syncParamRefNames[i] = GetUniqueParameter($"__CompParam/Ref{i}", VRCParameterType.Bool);
             syncLayerRoot = fx.AddLayer(LayerPriority.Default, "Parameter Sync").StateMachine;
-            rootReceiveState = syncLayerRoot.AddState("Receiver", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
-            rootSendState = syncLayerRoot.AddState("Sender", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
-            syncLayerRoot.DefaultState = rootReceiveState;
-            var transition = rootReceiveState.ConnectTo(rootSendState);
-            var localParameter = fx.EnsureParameter("IsLocal", AnimatorControllerParameterType.Bool, false);
+            var defaultState = syncLayerRoot.AddState("Default", emptyDelayClip, new(250, 0)).WriteDefaults(aap.WriteDefaults);
+            syncLayerRoot.DefaultState = defaultState;
+            rootReceiverSM = syncLayerRoot.AddStateMachine("Receiver", new(500, 0));
+            rootReceiverSM.DefaultState = rootReceiverSM.AddState("Idle", emptyDelayClip, new(250, 0)).WriteDefaults(aap.WriteDefaults);
+            rootSenderSM = syncLayerRoot.AddStateMachine("Sender", new(500, 100));
+            rootSenderSM.DefaultState = rootSenderSM.AddState("Idle", emptyDelayClip, new(250, 0)).WriteDefaults(aap.WriteDefaults);
+            var transitionToSender = defaultState.ConnectTo(rootSenderSM);
+            var transitionToReceiver = defaultState.ConnectTo(rootReceiverSM);
+            var localParameter = fx.EnsureParameter("IsLocal", ACParameterType.Bool, false);
             switch (localParameter.type) {
-                case AnimatorControllerParameterType.Bool:
-                    transition.When(AnimatorConditionMode.If, "IsLocal");
+                case ACParameterType.Bool:
+                    transitionToSender.When(AnimatorConditionMode.If, "IsLocal");
+                    transitionToReceiver.When(AnimatorConditionMode.IfNot, "IsLocal");
                     break;
-                case AnimatorControllerParameterType.Int:
-                    transition.When(AnimatorConditionMode.NotEqual, "IsLocal", 0);
+                case ACParameterType.Int:
+                    transitionToSender.When(AnimatorConditionMode.NotEqual, "IsLocal", 0);
+                    transitionToReceiver.When(AnimatorConditionMode.Equals, "IsLocal", 0);
                     break;
-                case AnimatorControllerParameterType.Float:
-                    transition.When(AnimatorConditionMode.Greater, "IsLocal", 0.0001F);
+                case ACParameterType.Float:
+                    transitionToSender.When(AnimatorConditionMode.Greater, "IsLocal", 0.5F);
+                    transitionToReceiver.When(AnimatorConditionMode.Less, "IsLocal", 0.5F);
                     break;
             }
         }
 
         string GetUniqueParameter(string name, VRCParameterType type, bool synced = true, float defaultValue = 0) {
             var param = fx.EnsureParameter(name, type switch {
-                VRCParameterType.Bool => AnimatorControllerParameterType.Bool,
-                VRCParameterType.Int => AnimatorControllerParameterType.Int,
-                _ => AnimatorControllerParameterType.Float,
+                VRCParameterType.Bool => ACParameterType.Bool,
+                VRCParameterType.Int => ACParameterType.Int,
+                _ => ACParameterType.Float,
             });
             parameters.Add(new VRCParameter {
                 name = param.name,
                 valueType = type,
                 networkSynced = synced,
+                saved = false,
                 defaultValue = defaultValue,
             });
             return param.name;
@@ -133,76 +155,181 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         public void ProcessParameter(string name) {
-            if (!processParameters.Add(name)) return;
+            if (!processParameters.Add(name))
+                return;
             if (!parameterWillProcess.TryGetValue(name, out var p))
                 p = InternalPreprocessParameter(name);
-            if (p == null) return;
-            fx.EnsureParameter(name, AnimatorControllerParameterType.Float, false);
+            if (p == null)
+                return;
+            if (p.valueType == VRCParameterType.Bool) {
+                boolParameters.Add(p.name);
+                if (boolParameters.Count >= 8) ProcessBoolParameterBank();
+                return;
+            }
             int uniqueIndex = ++indexCount;
-
-            var receiverState = syncLayerRoot.AddState($"{name} Receive", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
+            var receiverState = rootReceiverSM.AddState(p.name, emptyDelayClip, GetNodePosition()).WriteDefaults(aap.WriteDefaults);
             var receiveModifier = receiverState.WithParameterChange();
             switch (p.valueType) {
-                case VRCParameterType.Bool:
                 case VRCParameterType.Int:
-                    receiveModifier.Copy(syncParamName, name);
+                    receiveModifier.Copy(syncParamName, p.name);
                     break;
                 case VRCParameterType.Float:
-                    receiveModifier.Copy(syncParamName, name, 0, 254, -1, 1);
+                    receiveModifier.Copy(syncParamName, p.name, 0, 254, -1, 1);
                     break;
             }
-            var receiveTransition = rootReceiveState.ConnectTo(receiverState);
+            var receiveTransition = rootReceiverSM.DefaultState.ConnectTo(receiverState);
             for (int i = 0; i < syncParamRefNames.Length; i++)
-                receiveTransition.When(
-                    (uniqueIndex & (1 << i)) != 0 ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot,
-                    syncParamRefNames[i]
-                );
+                receiveTransition.When(ToConditionMode(IsFlagOn(uniqueIndex, i), ACParameterType.Bool), syncParamRefNames[i]);
             allReceiveStates.Add(receiverState);
 
-            var lastValue = aap.GetUniqueParameter($"{name}/__prev", p.defaultValue);
-            var diffValue = aap.GetUniqueParameter($"{name}/__diff", p.defaultValue);
-            aap.Subtract(name, lastValue, diffValue, -1, 1);
-
-            var sendState = syncLayerRoot.AddState($"{name} Send", emptyDelayClip).WriteDefaults(aap.WriteDefaults);
+            var sendState = rootSenderSM.AddState(p.name, emptyDelayClip, GetNodePosition()).WriteDefaults(aap.WriteDefaults);
+            ConfigurateSubtraction(p.name, out var lastValue, out var diffValue);
+            ConfigurateSendStateEnter(sendState, diffValue);
             var sendModifier = sendState.WithParameterChange();
             switch (p.valueType) {
-                case VRCParameterType.Bool:
                 case VRCParameterType.Int:
-                    sendModifier.Copy(name, syncParamName);
+                    sendModifier.Copy(p.name, syncParamName);
                     break;
                 case VRCParameterType.Float:
-                    sendModifier.Copy(name, syncParamName, -1, 1, 0, 254);
+                    sendModifier.Copy(p.name, syncParamName, -1, 1, 0, 254);
                     break;
             }
-            sendModifier.Copy(name, lastValue);
-            for (int i = 0; i < syncParamRefNames.Length; i++)
-                sendModifier.Set(syncParamRefNames[i], (uniqueIndex & (1 << i)) != 0);
-            rootSendState.ConnectTo(sendState)
-                .When(AnimatorConditionMode.Less, diffValue, -0.0001F)
-                .Or()
-                .When(AnimatorConditionMode.Greater, diffValue, 0.0001F);
+            sendModifier.Copy(p.name, lastValue);
+            SetParamRef(sendModifier, uniqueIndex);
             allSendStates.Add(sendState);
         }
 
-        public void FinalizeParameterConnections() {
-            for (int i = 0; i < allReceiveStates.Count; i++) {
-                var receiveState = allReceiveStates[i];
-                receiveState.Transitions = receiveState.Transitions.AddRange(rootReceiveState.Transitions);
+        void ProcessBoolParameterBank() {
+            int count = boolParameters.Count;
+            if (count == 0) return;
+            int uniqueIndex = ++indexCount;
+            int stateCount = 1 << count;
+            float statesPerRow = Mathf.Ceil(Mathf.Sqrt(stateCount));
+            var paramList = string.Join(", ", boolParameters);
+            var bankReceiveSM = rootReceiverSM.AddStateMachine(paramList, GetNodePosition());
+            (bankReceiveSM.DefaultState = bankReceiveSM
+                .AddState("Default", emptyDelayClip, new(250, 100))
+                .WriteDefaults(aap.WriteDefaults)
+            ).ExitTo().ExitTime(0);
+            for (int i = 0; i < stateCount; i++) {
+                var state = bankReceiveSM.AddState(
+                    i.ToString("X2"),
+                    emptyDelayClip,
+                    new((i % statesPerRow + 1) * 250, Mathf.Floor(i / statesPerRow + 2) * 100)
+                ).WriteDefaults(aap.WriteDefaults);
+                var transition = bankReceiveSM.BeginWith(state).When(AnimatorConditionMode.Equals, syncParamName, i);
+                for (int j = 0; j < syncParamRefNames.Length; j++)
+                    transition.When(ToConditionMode(IsFlagOn(uniqueIndex, j), ACParameterType.Bool), syncParamRefNames[j]);
+                var modifier = state.WithParameterChange();
+                for (int j = 0; j < count; j++)
+                    modifier.Set(boolParameters[j], IsFlagOn(i, j));
+                state.ExitTo().ExitTime(0);
             }
-            for (int i = 0; i < allSendStates.Count; i++) {
-                var sendState = allSendStates[i];
-                int bi = -1;
-                foreach (var transition in rootSendState.Transitions) {
-                    if (transition.DestinationState == rootReceiveState) continue;
-                    var clone = (transition.Clone() as VirtualStateTransition).ExitTime(1);
-                    sendState.Transitions = bi < 0 ?
-                        sendState.Transitions.Add(clone) :
-                        sendState.Transitions.Insert(bi++, clone);
-                    if (transition.DestinationState == sendState) bi = 0;
+            var receiveTransition = rootReceiverSM.DefaultState.ConnectTo(bankReceiveSM);
+            for (int i = 0; i < syncParamRefNames.Length; i++)
+                receiveTransition.When(ToConditionMode(IsFlagOn(uniqueIndex, i), ACParameterType.Bool), syncParamRefNames[i]);
+            allReceiveStates.Add(bankReceiveSM);
+
+            var bankSendSM = rootSenderSM.AddStateMachine(paramList, GetNodePosition());
+            (bankSendSM.DefaultState = bankSendSM
+                .AddState("Default", emptyDelayClip, new(250, 100))
+                .WriteDefaults(aap.WriteDefaults)
+            ).ExitTo().ExitTime(0);
+            var lastValues = new string[count];
+            for (int i = 0; i < count; i++) {
+                ConfigurateSubtraction(boolParameters[i], out lastValues[i], out var diffValue);
+                ConfigurateSendStateEnter(bankSendSM, diffValue);
+            }
+            for (int i = 0; i < stateCount; i++) {
+                var state = bankSendSM.AddState(
+                    i.ToString("X2"),
+                    emptyDelayClip,
+                    new((i % statesPerRow + 1) * 250, Mathf.Floor(i / statesPerRow + 2) * 100)
+                ).WriteDefaults(aap.WriteDefaults);
+                var transition = bankSendSM.BeginWith(state);
+                var modifier = state.WithParameterChange().Set(syncParamName, i);
+                SetParamRef(modifier, uniqueIndex);
+                for (int j = 0; j < count; j++) {
+                    transition.When(ToConditionMode(IsFlagOn(i, j), ACParameterType.Float), boolParameters[j], 0.5F);
+                    modifier.Copy(boolParameters[j], lastValues[j]);
                 }
-                sendState.ConnectTo(allSendStates[(i + 1) % allSendStates.Count]).ExitTime(1);
+                state.ExitTo().ExitTime(1);
             }
-            rootSendState.ConnectTo(allSendStates[0]).ExitTime(1);
+            allSendStates.Add(bankSendSM);
+
+            boolParameters.Clear();
+        }
+
+        void ConfigurateSubtraction(string parameterName, out string lastValue, out string diffValue) {
+            fx.EnsureParameter(parameterName, ACParameterType.Float, false);
+            lastValue = aap.GetUniqueParameter($"{parameterName}/__prev", 0);
+            diffValue = aap.GetUniqueParameter($"{parameterName}/__diff", 0);
+            aap.Subtract(parameterName, lastValue, diffValue, -1, 1);
+        }
+
+        Vector2 GetNodePosition() {
+            float x = (float)indexCount / totalCount * Mathf.PI * 2;
+            float y = totalCount * 100F;
+            return new(Mathf.Cos(x) * y + y, Mathf.Sin(x) * y + y - 250);
+        }
+
+        void SetParamRef(VRCAvatarParameterDriver modifier, int index) {
+            for (int i = 0; i < syncParamRefNames.Length; i++)
+                modifier.Set(syncParamRefNames[i], IsFlagOn(index, i));
+        }
+
+        void ConfigurateSendStateEnter(VirtualNode sendState, string diffValue) =>
+            rootSenderSM.DefaultState.ConnectTo(sendState)
+                .When(AnimatorConditionMode.Less, diffValue, -changeThreshold)
+                .Or()
+                .When(AnimatorConditionMode.Greater, diffValue, changeThreshold);
+
+        public void FinalizeParameterConnections() {
+            ProcessBoolParameterBank();
+            var rootReceiverStart = rootReceiverSM.DefaultState;
+            foreach (var receiveState in allReceiveStates) {
+                if (receiveState is VirtualState s) {
+                    foreach (var transition in rootReceiverStart.Transitions)
+                        s.Transitions = s.Transitions.Add(transition.CopyAsStateTransition());
+                    continue;
+                }
+                if (receiveState is VirtualStateMachine sm) {
+                    if (!rootReceiverSM.StateMachineTransitions.TryGetValue(sm, out var transitions))
+                        transitions = ImmutableList<VirtualTransition>.Empty;
+                    foreach (var transition in rootReceiverStart.Transitions)
+                        transitions = transitions.Add(transition.CopyAsTransition());
+                    if (!transitions.IsEmpty)
+                        rootReceiverSM.StateMachineTransitions = rootReceiverSM.StateMachineTransitions.SetItem(sm, transitions);
+                    continue;
+                }
+            }
+            var rootSenderStart = rootSenderSM.DefaultState;
+            for (int i = 0; i < allSendStates.Count; i++) {
+                int bi = -1;
+                if (allSendStates[i] is VirtualState s) {
+                    foreach (var transition in rootSenderStart.Transitions) {
+                        var clone = transition.CopyAsStateTransition().ExitTime(1);
+                        s.Transitions = bi < 0 ? s.Transitions.Add(clone) : s.Transitions.Insert(bi++, clone);
+                        if (transition.DestinationState == s) bi = 0;
+                    }
+                    s.ConnectTo(allSendStates[(i + 1) % allSendStates.Count]).ExitTime(1);
+                    continue;
+                }
+                if (allSendStates[i] is VirtualStateMachine sm) {
+                    if (!rootSenderSM.StateMachineTransitions.TryGetValue(sm, out var transitions))
+                        transitions = ImmutableList<VirtualTransition>.Empty;
+                    foreach (var transition in rootSenderStart.Transitions) {
+                        var clone = transition.CopyAsTransition();
+                        transitions = bi < 0 ? transitions.Add(clone) : transitions.Insert(bi++, clone);
+                        if (transition.DestinationStateMachine == sm) bi = 0;
+                    }
+                    if (!transitions.IsEmpty)
+                        rootSenderSM.StateMachineTransitions = rootSenderSM.StateMachineTransitions.SetItem(sm, transitions);
+                    sm.ConnectTo(allSendStates[(i + 1) % allSendStates.Count], rootSenderSM);
+                    continue;
+                }
+            }
+            rootSenderStart.ConnectTo(allSendStates[0]).ExitTime(1);
             asc.HarmonizeParameterTypes();
             parametersObject.parameters = parameters.ToArray();
         }

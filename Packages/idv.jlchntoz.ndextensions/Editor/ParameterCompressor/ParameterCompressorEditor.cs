@@ -110,6 +110,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(i18n["ParameterCompressor:selectParameters"], EditorStyles.boldLabel);
             foreach (var (component, parameters) in allParameters) {
+                if (component == null) continue;
                 bool folded = expandedComponents.Contains(component);
                 using (var changed = new EditorGUI.ChangeCheckScope()) {
                     if (!componentMenus.TryGetValue(component, out var menu)) {
@@ -152,6 +153,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 var name = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.name)).stringValue;
                 var type = (ACParameterType)parameter.FindPropertyRelative(nameof(AnimatorParameterRef.type)).intValue;
                 var source = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.source)).objectReferenceValue as Component;
+                if (source == null) source = target as Component;
                 var entry = new AnimatorParameterRef(name, type, source);
                 enabledParameters.Add(entry);
                 if (allParameters.TryGetValue(source, out var parameters) &&

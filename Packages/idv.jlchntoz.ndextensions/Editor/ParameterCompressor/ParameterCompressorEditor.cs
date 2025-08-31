@@ -110,7 +110,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(i18n["ParameterCompressor:selectParameters"], EditorStyles.boldLabel);
             foreach (var (component, parameters) in allParameters) {
-                if (component == null) continue;
+                if (component == null || parameters.Count == 0) continue;
                 bool folded = expandedComponents.Contains(component);
                 using (var changed = new EditorGUI.ChangeCheckScope()) {
                     if (!componentMenus.TryGetValue(component, out var menu)) {
@@ -194,6 +194,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (descriptor != null) target = descriptor;
 #endif
             currentParameterCost = 0;
+            foreach (var parameters in allParameters.Values) parameters.Clear();
             foreach (var entry in ParameterInfo.ForUI.GetParametersForObject(target.gameObject)) {
                 if (!entry.WantSynced) continue;
                 if (!entry.IsHidden) {

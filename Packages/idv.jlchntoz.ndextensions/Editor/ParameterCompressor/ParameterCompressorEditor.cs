@@ -153,7 +153,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 var name = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.name)).stringValue;
                 var type = (ACParameterType)parameter.FindPropertyRelative(nameof(AnimatorParameterRef.type)).intValue;
                 var source = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.source)).objectReferenceValue as Component;
-                if (source == null) source = target as Component;
+                if (source == null) continue;
                 var entry = new AnimatorParameterRef(name, type, source);
                 enabledParameters.Add(entry);
                 if (allParameters.TryGetValue(source, out var parameters) &&
@@ -298,6 +298,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
 
             void SelectAll() {
+                if (component == null) return;
                 parent.serializedObject.Update();
                 parent.LoadEnabledParameters();
                 if (!parent.allParameters.TryGetValue(component, out var parameters))
@@ -310,6 +311,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
 
             void DeselectAll() {
+                if (component == null) return;
                 parent.serializedObject.Update();
                 parent.LoadEnabledParameters();
                 if (!parent.allParameters.TryGetValue(component, out var parameters))

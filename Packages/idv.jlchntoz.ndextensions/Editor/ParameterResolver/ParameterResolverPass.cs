@@ -6,27 +6,57 @@ using NDMFParameterInfo = nadena.dev.ndmf.ParameterInfo;
 
 namespace JLChnToZ.NDExtensions.Editors {
     [RunsOnAllPlatforms]
+    [DependsOnContext(typeof(ParameterResolverContext))]
     sealed class ParameterResolverPass : Pass<ParameterResolverPass> {
-        FieldPatcher<AnimatorParameterRef> fieldPatcher;
-        readonly Dictionary<Component, IReadOnlyDictionary<(ParameterNamespace, string), ParameterMapping>> sourceToMappings = new();
-        NDMFParameterInfo parameterInfos;
+        ParameterResolverContext extContext;
 
         protected override void Execute(BuildContext context) {
-            fieldPatcher = new(Resolve);
-            parameterInfos = NDMFParameterInfo.ForContext(context);
-            sourceToMappings.Clear();
+            extContext = context.Extension<ParameterResolverContext>();
+            var fieldPatcher = new FieldPatcher<AnimatorParameterRef>(Resolve);
             foreach (var config in context.AvatarRootObject.GetComponentsInChildren<MonoBehaviour>(true))
                 fieldPatcher.Patch(config);
         }
 
         bool Resolve(ref AnimatorParameterRef parameter) {
-            if (string.IsNullOrEmpty(parameter.name) || parameter.source == null) return false;
-            if (!sourceToMappings.TryGetValue(parameter.source, out var mappings))
-                mappings = parameterInfos.GetParameterRemappingsAt(parameter.source, true);
-            if (mappings.TryGetValue((ParameterNamespace.Animator, parameter.name), out var mapping))
-                parameter.name = mapping.ParameterName;
-            parameter.source = null;
+            parameter = parameter.Persistant;
+            extContext.Resolve(parameter, out _);
             return true;
+        }
+    }
+
+    public class ParameterResolverContext : IExtensionContext {
+        NDMFParameterInfo parameterInfos;
+        readonly Dictionary<int, IReadOnlyDictionary<(ParameterNamespace, string), ParameterMapping>> sourceToMappings = new();
+        private readonly Dictionary<AnimatorParameterRef, ParameterMapping> refToMappings = new();
+
+        void IExtensionContext.OnActivate(BuildContext context) {
+            parameterInfos = NDMFParameterInfo.ForContext(context);
+        }
+
+        void IExtensionContext.OnDeactivate(BuildContext context) {
+            sourceToMappings.Clear();
+        }
+
+        public bool Resolve(AnimatorParameterRef parameter, out ParameterMapping mapping) {
+            if (string.IsNullOrEmpty(parameter.name)) {
+                mapping = default;
+                return false;
+            }
+            parameter = parameter.Persistant;
+            if (refToMappings.TryGetValue(parameter, out mapping))
+                return true;
+            int instanceID = parameter.InstanceID;
+            if (!sourceToMappings.TryGetValue(instanceID, out var mappings) && parameter.source != null)
+                sourceToMappings[instanceID] = mappings = parameterInfos.GetParameterRemappingsAt(parameter.source, true);
+            if (mappings != null && mappings.TryGetValue((ParameterNamespace.Animator, parameter.name), out mapping)) {
+                refToMappings[parameter] = mapping;
+                return true;
+            }
+            mapping = new ParameterMapping {
+                ParameterName = parameter.name,
+                IsHidden = false,
+            };
+            return false;
         }
     }
 }

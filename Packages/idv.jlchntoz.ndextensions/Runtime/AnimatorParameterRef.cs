@@ -7,6 +7,9 @@ namespace JLChnToZ.NDExtensions {
         public string name;
         public AnimatorControllerParameterType type;
         public Component source;
+        [NonSerialized] readonly int? instanceID;
+
+        public readonly int InstanceID => source != null ? source.GetInstanceID() : instanceID ?? 0;
 
         public readonly bool IsValid => !string.IsNullOrEmpty(name) &&
             (type == AnimatorControllerParameterType.Float ||
@@ -14,22 +17,25 @@ namespace JLChnToZ.NDExtensions {
              type == AnimatorControllerParameterType.Bool ||
              type == AnimatorControllerParameterType.Trigger);
 
+        public readonly AnimatorParameterRef Persistant => instanceID.HasValue ? this : new(name, type, source);
+
         public AnimatorParameterRef(string name, AnimatorControllerParameterType type, Component source = null) {
             this.name = name;
             this.type = type;
             this.source = source;
+            instanceID = source != null ? source.GetInstanceID() : null;
         }
 
         public readonly bool Equals(AnimatorParameterRef other) =>
             name == other.name &&
             type == other.type &&
-            source == other.source;
+            InstanceID == other.InstanceID;
 
         public override readonly bool Equals(object obj) =>
             obj is AnimatorParameterRef other && Equals(other);
 
         public override readonly int GetHashCode() =>
-            HashCode.Combine(name, type, source);
+            HashCode.Combine(name, type, InstanceID);
 
 #if UNITY_EDITOR
         public static implicit operator AnimatorControllerParameter(AnimatorParameterRef parameter) => new() {

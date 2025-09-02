@@ -224,14 +224,14 @@ namespace JLChnToZ.NDExtensions.Editors {
         public static VirtualStateTransition ConnectTo(this VirtualState from, VirtualNode to) {
             if (to is VirtualState state) return ConnectTo(from, state);
             if (to is VirtualStateMachine sm) return ConnectTo(from, sm);
-            if (to is VirtualLayer layer) return ConnectTo(from, layer);
+            if (to is VirtualLayer layer) return ConnectTo(from, layer.StateMachine);
             return null;
         }
 
         public static VirtualStateTransition AnyConnectTo(this VirtualStateMachine from, VirtualNode to) {
             if (to is VirtualState state) return AnyConnectTo(from, state);
             if (to is VirtualStateMachine sm) return AnyConnectTo(from, sm);
-            if (to is VirtualLayer layer) return AnyConnectTo(from, layer);
+            if (to is VirtualLayer layer) return AnyConnectTo(from, layer.StateMachine);
             return null;
         }
 
@@ -285,6 +285,37 @@ namespace JLChnToZ.NDExtensions.Editors {
             trans.SetExitDestination();
             state.Transitions = state.Transitions.Add(trans);
             return trans;
+        }
+
+        public static VirtualTransition ExitTo(this VirtualStateMachine stateMachine, VirtualStateMachine parent) {
+            if (!parent.StateMachineTransitions.TryGetValue(stateMachine, out var transitions))
+                transitions = ImmutableList<VirtualTransition>.Empty;
+            var transition = VirtualTransition.Create();
+            transition.SetExitDestination();
+            transitions = transitions.Add(transition);
+            parent.StateMachineTransitions = parent.StateMachineTransitions.SetItem(stateMachine, transitions);
+            return transition;
+        }
+
+        public static void ExtractAnyStateToScoped(this VirtualStateMachine stateMachine) {
+            var anyStateTransitions = stateMachine.AnyStateTransitions;
+            if (anyStateTransitions.IsEmpty) return;
+            stateMachine.AnyStateTransitions = ImmutableList<VirtualStateTransition>.Empty;
+            foreach (var transition in anyStateTransitions) {
+                foreach (var child in stateMachine.States)
+                    if (transition.CanTransitionToSelf || transition.DestinationState != child.State)
+                        child.State.Transitions = child.State.Transitions.Add(transition);
+                var vt = transition.CopyAsTransition();
+                stateMachine.EntryTransitions = stateMachine.EntryTransitions.Add(vt);
+                foreach (var child in stateMachine.StateMachines) {
+                    if (!stateMachine.StateMachineTransitions.TryGetValue(child.StateMachine, out var transitions))
+                        transitions = ImmutableList<VirtualTransition>.Empty;
+                    if (transition.CanTransitionToSelf || transition.DestinationStateMachine != child.StateMachine)
+                        transitions = transitions.Add(vt);
+                    if (!transitions.IsEmpty)
+                        stateMachine.StateMachineTransitions = stateMachine.StateMachineTransitions.SetItem(child.StateMachine, transitions);
+                }
+            }
         }
 
         public static VirtualStateTransition Solo(this VirtualStateTransition transition, bool solo = true) {

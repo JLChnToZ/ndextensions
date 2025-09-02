@@ -10,16 +10,18 @@ using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
     [RunsOnAllPlatforms]
+    [DependsOnContext(typeof(ParameterResolverContext))]
     [DependsOnContext(typeof(AnimatorServicesContext))]
     public sealed class ParameterValueFilterPass : Pass<ParameterValueFilterPass> {
         protected override void Execute(BuildContext context) {
             var extContext = context.Extension<AnimatorServicesContext>();
+            var resolverContext = context.Extension<ParameterResolverContext>();
             var controllers = extContext.ControllerContext.Controllers;
             var lookup = new Dictionary<string, ParameterValueFilter>();
             foreach (var filter in context.AvatarRootObject.GetComponentsInChildren<ParameterValueFilter>(true)) {
-                if (filter == null || string.IsNullOrEmpty(filter.parameter.name)) continue;
-                if (!lookup.ContainsKey(filter.parameter.name))
-                    lookup[filter.parameter.name] = filter;
+                resolverContext.Resolve(filter.parameter, out var info);
+                if (!lookup.ContainsKey(info.ParameterName))
+                    lookup[info.ParameterName] = filter;
             }
 #if VRC_SDK_VRCSDK3
             ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.Base, lookup);

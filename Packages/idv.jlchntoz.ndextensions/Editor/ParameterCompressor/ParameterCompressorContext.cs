@@ -40,8 +40,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 #if VRC_SDK_VRCSDK3
         const float changeThreshold = 1F / 128F;
         readonly Dictionary<string, VRCParameter> parameterWillProcess = new();
-        readonly HashSet<string> processParameters = new();
-        readonly List<VirtualNode> allReceiveStates = new(), allSendStates = new();
+        readonly List<VirtualNode> allSendStates = new();
         readonly List<string> boolParameters = new(8);
         VRCExpressionParameters parametersObject;
         List<VRCParameter> parameters;
@@ -147,20 +146,14 @@ namespace JLChnToZ.NDExtensions.Editors {
             return p;
         }
 
-        public void ResetProcessedMarker() => processParameters.Clear();
-
-        public void PreprocessParameter(string name) {
-            if (!processParameters.Add(name)) return;
-            parameterWillProcess[name] = InternalPreprocessParameter(name);
+        public VRCParameter PreprocessParameter(string name) {
+            if (!parameterWillProcess.TryGetValue(name, out var p))
+                parameterWillProcess[name] = p = InternalPreprocessParameter(name);
+            return p;
         }
 
         public void ProcessParameter(string name) {
-            if (!processParameters.Add(name))
-                return;
-            if (!parameterWillProcess.TryGetValue(name, out var p))
-                p = InternalPreprocessParameter(name);
-            if (p == null)
-                return;
+            if (!parameterWillProcess.TryGetValue(name, out var p) || p == null) return;
             if (p.valueType == VRCParameterType.Bool) {
                 boolParameters.Add(p.name);
                 if (boolParameters.Count >= 8) ProcessBoolParameterBank();
@@ -177,10 +170,9 @@ namespace JLChnToZ.NDExtensions.Editors {
                     receiveModifier.Copy(syncParamName, p.name, 0, 254, -1, 1);
                     break;
             }
-            var receiveTransition = rootReceiverSM.DefaultState.ConnectTo(receiverState);
+            var receiveTransition = rootReceiverSM.AnyConnectTo(receiverState);
             for (int i = 0; i < syncParamRefNames.Length; i++)
                 receiveTransition.When(ToConditionMode(IsFlagOn(uniqueIndex, i), ACParameterType.Bool), syncParamRefNames[i]);
-            allReceiveStates.Add(receiverState);
 
             var sendState = rootSenderSM.AddState(p.name, emptyDelayClip, GetNodePosition()).WriteDefaults(aap.WriteDefaults);
             ConfigurateSubtraction(p.name, out var lastValue, out var diffValue);
@@ -225,10 +217,9 @@ namespace JLChnToZ.NDExtensions.Editors {
                     modifier.Set(boolParameters[j], IsFlagOn(i, j));
                 state.ExitTo().ExitTime(0);
             }
-            var receiveTransition = rootReceiverSM.DefaultState.ConnectTo(bankReceiveSM);
+            var receiveTransition = rootReceiverSM.AnyConnectTo(bankReceiveSM);
             for (int i = 0; i < syncParamRefNames.Length; i++)
                 receiveTransition.When(ToConditionMode(IsFlagOn(uniqueIndex, i), ACParameterType.Bool), syncParamRefNames[i]);
-            allReceiveStates.Add(bankReceiveSM);
 
             var bankSendSM = rootSenderSM.AddStateMachine(paramList, GetNodePosition());
             (bankSendSM.DefaultState = bankSendSM
@@ -286,23 +277,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public void FinalizeParameterConnections() {
             ProcessBoolParameterBank();
-            var rootReceiverStart = rootReceiverSM.DefaultState;
-            foreach (var receiveState in allReceiveStates) {
-                if (receiveState is VirtualState s) {
-                    foreach (var transition in rootReceiverStart.Transitions)
-                        s.Transitions = s.Transitions.Add(transition.CopyAsStateTransition());
-                    continue;
-                }
-                if (receiveState is VirtualStateMachine sm) {
-                    if (!rootReceiverSM.StateMachineTransitions.TryGetValue(sm, out var transitions))
-                        transitions = ImmutableList<VirtualTransition>.Empty;
-                    foreach (var transition in rootReceiverStart.Transitions)
-                        transitions = transitions.Add(transition.CopyAsTransition());
-                    if (!transitions.IsEmpty)
-                        rootReceiverSM.StateMachineTransitions = rootReceiverSM.StateMachineTransitions.SetItem(sm, transitions);
-                    continue;
-                }
-            }
+            rootReceiverSM.ExtractAnyStateToScoped();
             var rootSenderStart = rootSenderSM.DefaultState;
             for (int i = 0; i < allSendStates.Count; i++) {
                 int bi = -1;
@@ -329,7 +304,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                     continue;
                 }
             }
-            rootSenderStart.ConnectTo(allSendStates[0]).ExitTime(1);
+            if (allSendStates.Count > 0) rootSenderStart.ConnectTo(allSendStates[0]).ExitTime(1);
             asc.HarmonizeParameterTypes();
             parametersObject.parameters = parameters.ToArray();
         }
@@ -338,9 +313,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public void Init(int parameterCount, float threshold = 0.1F) { }
 
-        public void ResetProcessedMarker() { }
-
-        public void PreprocessParameter(string name) { }
+        public object PreprocessParameter(string name) => null;
 
         public void ProcessParameter(string name) { }
 

@@ -77,7 +77,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                 saver.SaveAsset(parametersObject);
                 descriptor.expressionParameters = parametersObject;
             }
-            parameters = new(parametersObject.parameters);
+            parametersObject.parameters ??= Array.Empty<VRCParameter>();
+            parameters = new(parametersObject.parameters.Length);
+            foreach (var parameter in parametersObject.parameters)
+                if (parameter != null) parameters.Add(parameter);
         }
 
         public void Init(int parameterCount, int boolsCount, float threshold) {
@@ -132,7 +135,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         VRCParameter InternalPreprocessParameter(string name) {
             int index = -1;
-            VRCParameter p = default;
+            VRCParameter p = null;
             for (int i = 0; i < parameters.Count; i++) {
                 p = parameters[i];
                 if (p.name == name) {
@@ -140,20 +143,22 @@ namespace JLChnToZ.NDExtensions.Editors {
                     break;
                 }
             }
-            if (index < 0 || !p.networkSynced) return null;
+            if (index < 0 || p == null || !p.networkSynced) return null;
             p.networkSynced = false;
             parameters[index] = p;
             return p;
         }
 
         public VRCParameter PreprocessParameter(string name) {
-            if (!parameterWillProcess.TryGetValue(name, out var p))
-                parameterWillProcess[name] = p = InternalPreprocessParameter(name);
+            if (!parameterWillProcess.TryGetValue(name, out var p)) {
+                p = InternalPreprocessParameter(name);
+                if (p != null) parameterWillProcess[name] = p;
+            }
             return p;
         }
 
         public void ProcessParameter(string name) {
-            if (!parameterWillProcess.TryGetValue(name, out var p) || p == null) return;
+            if (!parameterWillProcess.TryGetValue(name, out var p)) return;
             if (p.valueType == VRCParameterType.Bool) {
                 boolParameters.Add(p.name);
                 if (boolParameters.Count >= 8) ProcessBoolParameterBank();

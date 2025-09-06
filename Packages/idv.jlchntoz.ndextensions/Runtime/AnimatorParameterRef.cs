@@ -7,6 +7,7 @@ namespace JLChnToZ.NDExtensions {
         public string name;
         public AnimatorControllerParameterType type;
         public Component source;
+        [NonSerialized] public readonly GameObject gameObject;
         [NonSerialized] readonly int? instanceID;
 
         public readonly int InstanceID => source != null ? source.GetInstanceID() : instanceID ?? 0;
@@ -23,7 +24,13 @@ namespace JLChnToZ.NDExtensions {
             this.name = name;
             this.type = type;
             this.source = source;
-            instanceID = source != null ? source.GetInstanceID() : null;
+            if (source != null) {
+                instanceID = source.GetInstanceID();
+                gameObject = source.gameObject;
+            } else {
+                instanceID = null;
+                gameObject = null;
+            }
         }
 
         public readonly bool Equals(AnimatorParameterRef other) =>

@@ -42,10 +42,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                     foreach (var parameter in component.parameters) {
                         paramResolver.Resolve(parameter, out var info);
                         if (string.IsNullOrEmpty(info.ParameterName) ||
-                            !allParameters.Add(info.ParameterName)) {
-                            AddNotResolveError(parameter, info);
+                            !allParameters.Add(info.ParameterName))
                             continue;
-                        }
                         var p = paramCompressor.PreprocessParameter(info.ParameterName);
                         if (p == null) {
                             AddNotResolveError(parameter, info);

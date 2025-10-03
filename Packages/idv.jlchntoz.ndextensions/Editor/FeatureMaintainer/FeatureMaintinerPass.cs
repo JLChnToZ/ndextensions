@@ -25,8 +25,16 @@ namespace JLChnToZ.NDExtensions.Editors {
             var extContext = context.Extension<AnimatorServicesContext>();
             FixParticleSystems(context, extContext);
             FixCameraEnable(context, extContext);
-            if (fixerClip != null && extContext.ControllerContext.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
-                fx.AddLayer(LayerPriority.Default, fixerClip.Name).StateMachine.AddState(fixerClip.Name, fixerClip);
+            if (fixerClip != null && extContext.ControllerContext.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx)) {
+                var layer = fx.AddLayer(LayerPriority.Default, fixerClip.Name).StateMachine;
+                var writeDefaults = fx.DetermineWriteDefaults();
+                layer.DefaultState = layer.AddState("Default", DummyClips.For(context).Get()).WriteDefaults(writeDefaults);
+                layer.DefaultState.ConnectTo(
+                    layer
+                    .AddState(fixerClip.Name, fixerClip)
+                    .WriteDefaults(writeDefaults)
+                ).When("PreviewMode", fx, false);
+            }
             fixerClip = null;
 #endif
         }

@@ -24,26 +24,26 @@ namespace JLChnToZ.NDExtensions.Editors {
                     lookup[info.ParameterName] = filter;
             }
 #if VRC_SDK_VRCSDK3
-            ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.Base, lookup);
-            ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.Additive, lookup);
-            ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.Gesture, lookup);
-            ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.Action, lookup);
-            ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.FX, lookup);
-            ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.Sitting, lookup);
-            ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.IKPose, lookup);
-            ProcessController(controllers, VRCAvatarDescriptor.AnimLayerType.TPose, lookup);
+            ProcessController(context, controllers, VRCAvatarDescriptor.AnimLayerType.Base, lookup);
+            ProcessController(context, controllers, VRCAvatarDescriptor.AnimLayerType.Additive, lookup);
+            ProcessController(context, controllers, VRCAvatarDescriptor.AnimLayerType.Gesture, lookup);
+            ProcessController(context, controllers, VRCAvatarDescriptor.AnimLayerType.Action, lookup);
+            ProcessController(context, controllers, VRCAvatarDescriptor.AnimLayerType.FX, lookup);
+            ProcessController(context, controllers, VRCAvatarDescriptor.AnimLayerType.Sitting, lookup);
+            ProcessController(context, controllers, VRCAvatarDescriptor.AnimLayerType.IKPose, lookup);
+            ProcessController(context, controllers, VRCAvatarDescriptor.AnimLayerType.TPose, lookup);
 #else
-            ProcessController(controllers, context.AvatarRootObject.GetComponent<Animator>(), lookup);
+            ProcessController(context, controllers, context.AvatarRootObject.GetComponent<Animator>(), lookup);
 #endif
             foreach (var tag in lookup.Values) UnityObject.DestroyImmediate(tag);
         }
 
-        void ProcessController(IDictionary<object, VirtualAnimatorController> controllers, object tag, IReadOnlyDictionary<string, ParameterValueFilter> filters) {
-            if (tag != null && controllers.TryGetValue(tag, out var controller)) ProcessController(controller, filters);
+        void ProcessController(BuildContext context, IDictionary<object, VirtualAnimatorController> controllers, object tag, IReadOnlyDictionary<string, ParameterValueFilter> filters) {
+            if (tag != null && controllers.TryGetValue(tag, out var controller)) ProcessController(context, controller, filters);
         }
 
-        void ProcessController(VirtualAnimatorController controller, IReadOnlyDictionary<string, ParameterValueFilter> filters) {
-            var context = AAPContext.ForController(controller);
+        void ProcessController(BuildContext buildContext, VirtualAnimatorController controller, IReadOnlyDictionary<string, ParameterValueFilter> filters) {
+            var context = AAPContext.ForController(buildContext, controller);
             var replaceParameters = new Dictionary<string, string>();
             var processFilters = new Dictionary<ParameterValueFilter, (string src, string dest)>();
             foreach (var kv in controller.Parameters) {

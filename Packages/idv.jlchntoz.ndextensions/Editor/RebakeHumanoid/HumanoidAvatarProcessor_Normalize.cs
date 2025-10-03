@@ -158,7 +158,13 @@ namespace JLChnToZ.NDExtensions.Editors {
                 foreach (Transform child in transform) CachePosition(child);
                 CacheAffectedComponents(transform);
                 var orgMatrix = transform.localToWorldMatrix;
-                transform.SetPositionAndRotation(root.position, root.rotation);
+#if UNITY_2021_3_OR_NEWER
+                root.GetPositionAndRotation(out var position, out var rotation);
+#else
+                var position = root.position;
+                var rotation = root.rotation;
+#endif
+                transform.SetPositionAndRotation(position, rotation);
                 RecordMovedBone(transform, orgMatrix);
                 RestoreCachedPositions();
             }

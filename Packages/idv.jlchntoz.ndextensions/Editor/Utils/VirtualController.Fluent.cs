@@ -1,4 +1,4 @@
-using System.Reflection;
+using System;
 using System.Runtime.CompilerServices;
 using System.Collections.Immutable;
 using UnityEngine;
@@ -16,10 +16,17 @@ using static VRC.SDKBase.VRC_AvatarParameterDriver;
 #endif
 
 namespace JLChnToZ.NDExtensions.Editors {
+    public enum RelativePosition {
+        Left = 0x1,
+        Right = 0x2,
+        Up = 0x4,
+        Down = 0x8,
+        UpperLeft = Left | Up,
+        UpperRight = Right | Up,
+        LowerLeft = Left | Down,
+        LowerRight = Right | Down,
+    }
     public static class VirtualControllerFluent {
-        static readonly ConditionalWeakTable<VirtualTransitionBase, VirtualNode> transitionSources = new();
-        static readonly FieldInfo blendTreeField = typeof(VirtualBlendTree).GetField("_tree", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
         public static bool DetermineWriteDefaults(this VirtualAnimatorController controller) {
             int wdOffCount = 0, wdOnCount = 0;
             foreach (var layer in controller.Layers) {
@@ -98,10 +105,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             controller.Parameters = controller.Parameters.SetItem(parameter.name, parameter);
         }
 
-        public static VirtualState AddState(this VirtualLayer layer, string name, VirtualMotion motion = null) =>
-            layer.StateMachine.AddState(name, motion);
+        public static VirtualState AddState(this VirtualLayer layer, string name, VirtualMotion motion = null, Vector3? position = null) =>
+            layer.StateMachine.AddState(name, motion, position);
 
-            
         public static VirtualStateMachine AddStateMachine(this VirtualStateMachine parent, string name = "", Vector3? position = null) {
             var stateMachine = VirtualStateMachine.Create(null, name);
             parent.StateMachines = parent.StateMachines.Add(new VirtualStateMachine.VirtualChildStateMachine {
@@ -110,6 +116,66 @@ namespace JLChnToZ.NDExtensions.Editors {
             });
             return stateMachine;
         }
+
+        public static Vector3 GetRelativePosition(
+            this VirtualStateMachine parent,
+            VirtualState childState,
+            RelativePosition relativePosition,
+            float units = 1
+        ) {
+            foreach (var state in parent.States)
+                if (state.State == childState)
+                    return GetStateRelativePosition(state.Position, relativePosition, units);
+            return Vector3.zero;
+        }
+
+        public static Vector3 GetRelativePosition(
+            this VirtualStateMachine parent,
+            VirtualStateMachine childStateMachine,
+            RelativePosition relativePosition,
+            float units = 1
+        ) {
+            foreach (var state in parent.StateMachines)
+                if (state.StateMachine == childStateMachine)
+                    return GetStateRelativePosition(state.Position, relativePosition, units);
+            return Vector3.zero;
+        }
+
+        public static Vector3 GetRelativePosition(
+            this VirtualStateMachine parent,
+            VirtualState childState,
+            Vector2 offset
+        ) {
+            foreach (var state in parent.States)
+                if (state.State == childState)
+                    return GetStateRelativePosition(state.Position, offset);
+            return Vector3.zero;
+        }
+
+        public static Vector3 GetRelativePosition(
+            this VirtualStateMachine parent,
+            VirtualStateMachine childStateMachine,
+            Vector2 offset
+        ) {
+            foreach (var state in parent.StateMachines)
+                if (state.StateMachine == childStateMachine)
+                    return GetStateRelativePosition(state.Position, offset);
+            return Vector3.zero;
+        }
+
+        static Vector2 GetStateRelativePosition(Vector2 position, RelativePosition relativePosition, float units = 1) {
+            var offsets = Vector2.zero;
+            if ((relativePosition & RelativePosition.Left) != 0) offsets.x -= units;
+            if ((relativePosition & RelativePosition.Right) != 0) offsets.x += units;
+            if ((relativePosition & RelativePosition.Up) != 0) offsets.y += units;
+            if ((relativePosition & RelativePosition.Down) != 0) offsets.y -= units;
+            return GetStateRelativePosition(position, offsets);
+        }
+
+        static Vector2 GetStateRelativePosition(Vector2 position, Vector2 offset) => new(
+            Mathf.Round(position.x * 0.1f + offset.x * 25f) * 10f,
+            Mathf.Round(position.y * 0.1f + offset.y * 5f) * 10f
+        );
 
         public static VirtualStateMachine AddStateMachine(this VirtualLayer layer, string name = "", Vector3? position = null) =>
             layer.StateMachine.AddStateMachine(name, position);
@@ -159,67 +225,50 @@ namespace JLChnToZ.NDExtensions.Editors {
             return state;
         }
         public static VirtualStateTransition ConnectTo(this VirtualState from, VirtualState to) {
-            var trans = CreateStateTransition();
+            var trans = VirtualTransitionRef.From(null, from, TransitionType.StateTransition) as VirtualStateTransition;
             trans.SetDestination(to);
-            from.Transitions = from.Transitions.Add(trans);
-            transitionSources.Add(trans, from);
             return trans;
         }
 
         public static VirtualStateTransition ConnectTo(this VirtualState from, VirtualStateMachine to) {
-            var trans = CreateStateTransition();
+            var trans = VirtualTransitionRef.From(null, from, TransitionType.StateTransition) as VirtualStateTransition;
             trans.SetDestination(to);
-            from.Transitions = from.Transitions.Add(trans);
-            transitionSources.Add(trans, from);
             return trans;
         }
 
         public static VirtualStateTransition AnyConnectTo(this VirtualStateMachine from, VirtualState to) {
-            var trans = CreateStateTransition();
+            var trans = VirtualTransitionRef.From(null, from, TransitionType.AnyStateTransition) as VirtualStateTransition;
             trans.SetDestination(to);
-            from.AnyStateTransitions = from.AnyStateTransitions.Add(trans);
-            transitionSources.Add(trans, from);
             return trans;
         }
 
         public static VirtualTransition ConnectTo(this VirtualStateMachine from, VirtualState to, VirtualStateMachine parent) {
-            var trans = VirtualTransition.Create();
+            var trans = VirtualTransitionRef.From(parent, from, TransitionType.StateTransition) as VirtualTransition;
             trans.SetDestination(to);
-            if (!parent.StateMachineTransitions.TryGetValue(from, out var transitions))
-                transitions = ImmutableList<VirtualTransition>.Empty;
-            transitions = transitions.Add(trans);
-            parent.StateMachineTransitions = parent.StateMachineTransitions.SetItem(from, transitions);
-            transitionSources.Add(trans, from);
             return trans;
         }
 
         public static VirtualStateTransition AnyConnectTo(this VirtualStateMachine from, VirtualStateMachine to) {
-            var trans = CreateStateTransition();
+            var trans = VirtualTransitionRef.From(null, from, TransitionType.AnyStateTransition) as VirtualStateTransition;
             trans.SetDestination(to);
             from.AnyStateTransitions = from.AnyStateTransitions.Add(trans);
-            transitionSources.Add(trans, from);
             return trans;
         }
 
         public static VirtualTransition ConnectTo(this VirtualStateMachine from, VirtualStateMachine to, VirtualStateMachine parent) {
-            var trans = VirtualTransition.Create();
+            var trans = VirtualTransitionRef.From(parent, from, TransitionType.StateTransition) as VirtualTransition;
             trans.SetDestination(to);
-            if (!parent.StateMachineTransitions.TryGetValue(from, out var transitions))
-                transitions = ImmutableList<VirtualTransition>.Empty;
-            transitions = transitions.Add(trans);
-            parent.StateMachineTransitions = parent.StateMachineTransitions.SetItem(from, transitions);
-            transitionSources.Add(trans, from);
             return trans;
         }
 
         public static VirtualStateTransition AnyConnectTo(this VirtualLayer from, VirtualState to) =>
-            from.StateMachine.AnyConnectTo(to);
+            AnyConnectTo(from.StateMachine, to);
 
         public static VirtualStateTransition AnyConnectTo(this VirtualLayer from, VirtualStateMachine to) =>
-            from.StateMachine.AnyConnectTo(to);
+            AnyConnectTo(from.StateMachine, to);
 
         public static VirtualStateTransition AnyConnectTo(this VirtualStateMachine from, VirtualLayer to) =>
-            from.AnyConnectTo(to.StateMachine);
+            AnyConnectTo(from, to.StateMachine);
 
         public static VirtualStateTransition ConnectTo(this VirtualState from, VirtualNode to) {
             if (to is VirtualState state) return ConnectTo(from, state);
@@ -243,57 +292,49 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         public static VirtualTransitionBase ConnectTo(this VirtualLayer from, VirtualNode to, VirtualStateMachine parent) =>
-            from.StateMachine.ConnectTo(to, parent);
+            ConnectTo(from.StateMachine, to, parent);
 
         public static VirtualTransition ConnectTo(this VirtualStateMachine from, VirtualLayer to, VirtualStateMachine parent) =>
-            from.ConnectTo(to.StateMachine, parent);
+            ConnectTo(from, to.StateMachine, parent);
 
         public static VirtualTransition BeginWith(this VirtualStateMachine machine, VirtualState state) {
-            var trans = VirtualTransition.Create();
+            var trans = VirtualTransitionRef.From(null, machine, TransitionType.EntryTransition) as VirtualTransition;
             trans.SetDestination(state);
-            machine.EntryTransitions = machine.EntryTransitions.Add(trans);
             machine.DefaultState ??= state;
-            transitionSources.Add(trans, machine);
             return trans;
         }
 
         public static VirtualTransition BeginWith(this VirtualStateMachine machine, VirtualStateMachine state) {
-            var trans = VirtualTransition.Create();
+            var trans = VirtualTransitionRef.From(null, machine, TransitionType.EntryTransition) as VirtualTransition;
             trans.SetDestination(state);
-            machine.EntryTransitions = machine.EntryTransitions.Add(trans);
             return trans;
         }
 
         public static VirtualTransition BeginWith(this VirtualStateMachine machine, VirtualNode node) {
-            if (node is VirtualState state) return machine.BeginWith(state);
-            if (node is VirtualStateMachine sm) return machine.BeginWith(sm);
-            if (node is VirtualLayer layer) return machine.BeginWith(layer);
+            if (node is VirtualState state) return BeginWith(machine, state);
+            if (node is VirtualStateMachine sm) return BeginWith(machine, sm);
+            if (node is VirtualLayer layer) return BeginWith(machine, layer);
             return null;
         }
 
         public static VirtualTransition BeginWith(this VirtualLayer layer, VirtualState state) =>
-            layer.StateMachine.BeginWith(state);
+            BeginWith(layer.StateMachine, state);
 
         public static VirtualTransition BeginWith(this VirtualLayer layer, VirtualStateMachine state) =>
-            layer.StateMachine.BeginWith(state);
+            BeginWith(layer.StateMachine, state);
 
         public static VirtualTransition BeginWith(this VirtualLayer layer, VirtualNode node) =>
-            layer.StateMachine.BeginWith(node);
+            BeginWith(layer.StateMachine, node);
 
         public static VirtualStateTransition ExitTo(this VirtualState state) {
-            var trans = CreateStateTransition();
+            var trans = VirtualTransitionRef.From(null, state, TransitionType.StateTransition) as VirtualStateTransition;
             trans.SetExitDestination();
-            state.Transitions = state.Transitions.Add(trans);
             return trans;
         }
 
         public static VirtualTransition ExitTo(this VirtualStateMachine stateMachine, VirtualStateMachine parent) {
-            if (!parent.StateMachineTransitions.TryGetValue(stateMachine, out var transitions))
-                transitions = ImmutableList<VirtualTransition>.Empty;
-            var transition = VirtualTransition.Create();
+            var transition = VirtualTransitionRef.From(null, stateMachine, TransitionType.StateTransition) as VirtualTransition;
             transition.SetExitDestination();
-            transitions = transitions.Add(transition);
-            parent.StateMachineTransitions = parent.StateMachineTransitions.SetItem(stateMachine, transitions);
             return transition;
         }
 
@@ -338,15 +379,6 @@ namespace JLChnToZ.NDExtensions.Editors {
             return transition;
         }
 
-        static VirtualStateTransition CreateStateTransition() {
-            var transition = VirtualStateTransition.Create();
-            transition.Offset = 0;
-            transition.Duration = 0;
-            transition.ExitTime = null;
-            transition.CanTransitionToSelf = false;
-            return transition;
-        }
-
         public static T When<T>(this T transition, AnimatorConditionMode mode, string parameter, float value = 1) where T : VirtualTransitionBase {
             switch (mode) {
                 case AnimatorConditionMode.If:
@@ -367,29 +399,32 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         public static T When<T>(this T transition, AnimatorConditionMode mode, string parameter, bool value) where T : VirtualTransitionBase =>
-            transition.When(mode, parameter, value ? 1 : 0);
+            When(transition, mode, parameter, value ? 1 : 0);
+
+        public static T When<T>(
+            this T transition,
+            string parameterName,
+            VirtualAnimatorController controller,
+            bool isTrue = true
+        ) where T : VirtualTransitionBase =>
+            When(transition, EnsureParameter(controller, parameterName, ACParameterType.Bool, false), isTrue);
+
+        public static T When<T>(this T transition, ACParameter parameter, bool isTrue = true) where T : VirtualTransitionBase => parameter.type switch {
+            ACParameterType.Bool => When(transition, isTrue ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, parameter.name),
+            ACParameterType.Int => When(transition, isTrue ? AnimatorConditionMode.NotEqual : AnimatorConditionMode.Equals, parameter.name, 0),
+            ACParameterType.Float => When(transition, isTrue ? AnimatorConditionMode.Greater : AnimatorConditionMode.Less, parameter.name, 0.5f),
+            _ => transition,
+        };
 
         public static VirtualTransition Or(this VirtualTransition transition) {
-            var clone = transition.Clone() as VirtualTransition;
+            var clone = VirtualTransitionRef.Clone(transition) as VirtualTransition;
             clone.Conditions = ImmutableList<AnimatorCondition>.Empty;
-            if (transitionSources.TryGetValue(transition, out var source) &&
-                source is VirtualStateMachine sm) {
-                sm.EntryTransitions = sm.EntryTransitions.Add(clone);
-                transitionSources.Add(clone, source);
-            }
             return clone;
         }
 
         public static VirtualStateTransition Or(this VirtualStateTransition transition) {
-            var clone = transition.Clone() as VirtualStateTransition;
+            var clone = VirtualTransitionRef.Clone(transition) as VirtualStateTransition;
             clone.Conditions = ImmutableList<AnimatorCondition>.Empty;
-            if (transitionSources.TryGetValue(transition, out var source)) {
-                if (source is VirtualStateMachine sm)
-                    sm.AnyStateTransitions = sm.AnyStateTransitions.Add(clone);
-                else if (source is VirtualState s)
-                    s.Transitions = s.Transitions.Add(clone);
-                transitionSources.Add(clone, source);
-            }
             return clone;
         }
 
@@ -445,10 +480,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public static VirtualBlendTree SetDirect(this VirtualBlendTree tree, bool normalize = false) {
             tree.BlendType = BlendTreeType.Direct;
-            using (var so = new SerializedObject((BlendTree)blendTreeField.GetValue(tree))) {
-                so.FindProperty("m_NormalizedBlendValues").boolValue = normalize;
-                so.ApplyModifiedPropertiesWithoutUndo();
-            }
+            tree.NormalizedBlendValues = normalize;
             return tree;
         }
 
@@ -511,7 +543,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         public static VirtualBlendTree AddMotion(this VirtualBlendTree tree, float x, float y, VirtualMotion motion, float timeScale = 1, bool mirror = false) =>
-            tree.AddMotion(new Vector2(x, y), motion, timeScale, mirror);
+            AddMotion(tree, new Vector2(x, y), motion, timeScale, mirror);
 
         public static VirtualBlendTree AddMotion(this VirtualBlendTree tree, string parameter, VirtualMotion motion, float timeScale = 1, bool mirror = false) {
             tree.Children = tree.Children.Add(new VirtualBlendTree.VirtualChildMotion {
@@ -555,7 +587,11 @@ namespace JLChnToZ.NDExtensions.Editors {
             this VirtualClip clip, string path, string propertyName,
             float value, float duration = 0
         ) where T : UnityObject {
-            clip.SetFloatCurve(path, typeof(T), propertyName, AnimationCurve.Constant(0, Mathf.Max(duration, 1F / clip.FrameRate), value));
+            clip.SetFloatCurve(path, typeof(T), propertyName, AnimationCurve.Constant(
+                0,
+                Mathf.Max(duration, clip.FrameRate > 0 ? 1F / clip.FrameRate : 0),
+                value
+            ));
             return clip;
         }
 
@@ -563,39 +599,38 @@ namespace JLChnToZ.NDExtensions.Editors {
             this VirtualClip clip, string path, string propertyName,
             UnityObject value
         ) where T : UnityObject {
-            clip.SetObjectCurve(
-                EditorCurveBinding.PPtrCurve(path, typeof(T), propertyName),
-                new[] { new ObjectReferenceKeyframe() { time = 0, value = value } }
-            );
+            clip.SetObjectCurve(path, typeof(T), propertyName, new[] {
+                new ObjectReferenceKeyframe() { time = 0, value = value },
+            });
             return clip;
         }
 
         public static VirtualClip SetLinearClip<T>(
             this VirtualClip clip, ObjectPathRemapper remapper, T target, string propertyName,
             float startValue, float endValue, float duration = 0
-        ) where T : Component => clip.SetLinearClip<T>(
-            remapper.GetVirtualPathForObject(target.transform), propertyName, startValue, endValue, duration
+        ) where T : Component => SetLinearClip<T>(
+            clip, remapper.GetVirtualPathForObject(target.transform), propertyName, startValue, endValue, duration
         );
 
         public static VirtualClip SetConstantClip<T>(
             this VirtualClip clip, ObjectPathRemapper remapper, T target, string propertyName,
             float value, float duration = 0
-        ) where T : Component => clip.SetConstantClip<T>(
-            remapper.GetVirtualPathForObject(target.transform), propertyName, value, duration
+        ) where T : Component => SetConstantClip<T>(
+            clip, remapper.GetVirtualPathForObject(target.transform), propertyName, value, duration
         );
 
         public static VirtualClip SetConstantClip(
             this VirtualClip clip, ObjectPathRemapper remapper, GameObject target, string propertyName,
             float value, float duration = 0
-        ) => clip.SetConstantClip<GameObject>(
-            remapper.GetVirtualPathForObject(target.transform), propertyName, value, duration
+        ) => SetConstantClip<GameObject>(
+            clip, remapper.GetVirtualPathForObject(target.transform), propertyName, value, duration
         );
 
         public static VirtualClip SetConstantClip<T>(
             this VirtualClip clip, ObjectPathRemapper remapper, T target, string propertyName,
             UnityObject value
-        ) where T : Component => clip.SetConstantClip<T>(
-            remapper.GetVirtualPathForObject(target.transform), propertyName, value
+        ) where T : Component => SetConstantClip<T>(
+            clip, remapper.GetVirtualPathForObject(target.transform), propertyName, value
         );
 
         public static T WithBehaviour<T>(this VirtualState state) where T : StateMachineBehaviour {
@@ -606,7 +641,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
 #if VRC_SDK_VRCSDK3
         public static VRCAvatarParameterDriver WithParameterChange(this VirtualState state) =>
-            state.WithBehaviour<VRCAvatarParameterDriver>();
+            WithBehaviour<VRCAvatarParameterDriver>(state);
 
         public static VRCAvatarParameterDriver Set(this VRCAvatarParameterDriver driver, string name, float value) {
             driver.parameters.Add(new Parameter {
@@ -617,7 +652,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             return driver;
         }
 
-        public static VRCAvatarParameterDriver Set(this VRCAvatarParameterDriver driver, string name, bool value) => driver.Set(name, value ? 1 : 0);
+        public static VRCAvatarParameterDriver Set(this VRCAvatarParameterDriver driver, string name, bool value) => Set(driver, name, value ? 1 : 0);
 
         public static VRCAvatarParameterDriver Increment(this VRCAvatarParameterDriver driver, string name, float value) {
             driver.parameters.Add(new Parameter {
@@ -680,5 +715,84 @@ namespace JLChnToZ.NDExtensions.Editors {
             return driver;
         }
 #endif
+
+        sealed class VirtualTransitionRef {
+            static readonly ConditionalWeakTable<VirtualTransitionBase, VirtualTransitionRef> refs = new();
+            readonly VirtualNode source;
+            readonly VirtualStateMachine parent;
+            readonly TransitionType type;
+
+            public static VirtualTransitionBase From(VirtualStateMachine parent, VirtualNode source, TransitionType type) {
+                var trans = type switch {
+                    TransitionType.AnyStateTransition => CreateStateTransition(),
+                    TransitionType.EntryTransition => CreateTransition(),
+                    _ => source is VirtualStateMachine ? CreateTransition() : CreateStateTransition(),
+                };
+                ConnectAndRecord(trans, source, parent, type);
+                return trans;
+            }
+
+            static VirtualTransitionBase CreateTransition() => VirtualTransition.Create();
+
+            static VirtualTransitionBase CreateStateTransition() {
+                var trans = VirtualStateTransition.Create();
+                trans.Offset = 0;
+                trans.Duration = 0;
+                trans.ExitTime = null;
+                trans.CanTransitionToSelf = false;
+                return trans;
+            }
+
+            public static VirtualTransitionBase Clone(VirtualTransitionBase transition) {
+                var clone = transition.Clone();
+                if (refs.TryGetValue(transition, out var entry))
+                    ConnectAndRecord(clone, entry.source, entry.parent, entry.type);
+                return clone;
+            }
+
+            static void ConnectAndRecord(VirtualTransitionBase transition, VirtualNode source, VirtualStateMachine parent, TransitionType type) {
+                refs.AddOrUpdate(transition, new(parent, source, type));
+                switch (type) {
+                    case TransitionType.StateTransition:
+                        if (source is VirtualState vs)
+                            vs.Transitions = vs.Transitions.Add(transition as VirtualStateTransition);
+                        if (source is VirtualStateMachine vsm) {
+                            if (!parent.StateMachineTransitions.TryGetValue(vsm, out var transitions))
+                                transitions = ImmutableList<VirtualTransition>.Empty;
+                            transitions = transitions.Add(transition as VirtualTransition);
+                            parent.StateMachineTransitions = parent.StateMachineTransitions.SetItem(vsm, transitions);
+                        }
+                        break;
+                    case TransitionType.AnyStateTransition:
+                        vsm = source as VirtualStateMachine;
+                        vsm.AnyStateTransitions = vsm.AnyStateTransitions.Add(transition as VirtualStateTransition);
+                        break;
+                    case TransitionType.EntryTransition:
+                        vsm = source as VirtualStateMachine;
+                        vsm.EntryTransitions = vsm.EntryTransitions.Add(transition as VirtualTransition);
+                        break;
+                }
+            }
+
+            VirtualTransitionRef(VirtualStateMachine parent, VirtualNode source, TransitionType type) {
+                this.parent = parent;
+                this.source = source;
+                this.type = type;
+            }
+
+            public override int GetHashCode() => HashCode.Combine(source, parent, type);
+
+            public override bool Equals(object obj) =>
+                obj is VirtualTransitionRef other &&
+                other.source == source &&
+                other.parent == parent &&
+                other.type == type;
+        }
+
+        enum TransitionType : byte {
+            StateTransition,
+            AnyStateTransition,
+            EntryTransition,
+        }
     }
 }

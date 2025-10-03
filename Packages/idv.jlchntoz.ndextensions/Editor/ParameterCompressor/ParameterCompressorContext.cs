@@ -45,6 +45,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         VRCExpressionParameters parametersObject;
         List<VRCParameter> parameters;
         AnimatorServicesContext asc;
+        DummyClips dummyClips;
         VirtualAnimatorController fx;
         AAPContext aap;
         string syncParamName;
@@ -64,7 +65,8 @@ namespace JLChnToZ.NDExtensions.Editors {
         public void OnActivate(BuildContext context) {
             asc = context.Extension<AnimatorServicesContext>();
             fx = asc.ControllerContext.Controllers[VRCLayerType.FX];
-            aap = AAPContext.ForController(fx);
+            aap = AAPContext.ForController(context, fx);
+            dummyClips = DummyClips.For(context);
             var descriptor = context.VRChatAvatarDescriptor();
             parametersObject = descriptor.expressionParameters;
             var saver = context.AssetSaver;
@@ -84,7 +86,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         public void Init(int parameterCount, int boolsCount, float threshold) {
-            emptyDelayClip = VirtualClip.Create("Delay").SetConstantClip<GameObject>($"Dummy_{Guid.NewGuid()}", "enabled", 1, threshold);
+            emptyDelayClip = dummyClips.Get(threshold);
             syncParamName = GetUniqueParameter("__CompParam/Value", VRCParameterType.Int);
             totalCount = parameterCount + (boolsCount + 7) / 8;
             int requiredBits = CountRequiredParameterBits(parameterCount, boolsCount);
@@ -98,23 +100,14 @@ namespace JLChnToZ.NDExtensions.Editors {
             rootReceiverSM.DefaultState = rootReceiverSM.AddState("Idle", emptyDelayClip, new(250, 0)).WriteDefaults(aap.WriteDefaults);
             rootSenderSM = syncLayerRoot.AddStateMachine("Sender", new(500, 100));
             rootSenderSM.DefaultState = rootSenderSM.AddState("Idle", emptyDelayClip, new(250, 0)).WriteDefaults(aap.WriteDefaults);
-            var transitionToSender = defaultState.ConnectTo(rootSenderSM);
-            var transitionToReceiver = defaultState.ConnectTo(rootReceiverSM);
-            var localParameter = fx.EnsureParameter("IsLocal", ACParameterType.Bool, false);
-            switch (localParameter.type) {
-                case ACParameterType.Bool:
-                    transitionToSender.When(AnimatorConditionMode.If, "IsLocal");
-                    transitionToReceiver.When(AnimatorConditionMode.IfNot, "IsLocal");
-                    break;
-                case ACParameterType.Int:
-                    transitionToSender.When(AnimatorConditionMode.NotEqual, "IsLocal", 0);
-                    transitionToReceiver.When(AnimatorConditionMode.Equals, "IsLocal", 0);
-                    break;
-                case ACParameterType.Float:
-                    transitionToSender.When(AnimatorConditionMode.Greater, "IsLocal", 0.5F);
-                    transitionToReceiver.When(AnimatorConditionMode.Less, "IsLocal", 0.5F);
-                    break;
-            }
+            defaultState
+            .ConnectTo(rootSenderSM)
+            .When("IsLocal", fx)
+            .When("PreviewMode", fx, false);
+            defaultState
+            .ConnectTo(rootReceiverSM)
+            .When("IsLocal", fx, false)
+            .When("PreviewMode", fx, false);
         }
 
         string GetUniqueParameter(string name, VRCParameterType type, bool synced = true, float defaultValue = 0) {

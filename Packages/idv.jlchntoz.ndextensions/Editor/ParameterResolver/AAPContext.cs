@@ -4,12 +4,14 @@ using UnityEngine;
 using nadena.dev.ndmf.animator;
 using ACParameter = UnityEngine.AnimatorControllerParameter;
 using ACParameterType = UnityEngine.AnimatorControllerParameterType;
+using nadena.dev.ndmf;
 
 namespace JLChnToZ.NDExtensions.Editors {
     // Ref: https://vrc.school/docs/Other/AAPs
     // Ref: https://vrc.school/docs/Other/Advanced-BlendTrees
     public class AAPContext {
         static readonly ConditionalWeakTable<VirtualAnimatorController, AAPContext> instances = new();
+        static readonly ConditionalWeakTable<VirtualAnimatorController, BuildContext> buildContexts = new();
         readonly VirtualAnimatorController controller;
         readonly Dictionary<float, string> tempParameters = new();
         VirtualBlendTree rootBlendTree;
@@ -51,8 +53,10 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
         }
 
-        public static AAPContext ForController(VirtualAnimatorController controller) =>
-            instances.GetValue(controller, CreateInstance);
+        public static AAPContext ForController(BuildContext context, VirtualAnimatorController controller) {
+            buildContexts.AddOrUpdate(controller, context);
+            return instances.GetValue(controller, CreateInstance);
+        }
 
         static AAPContext CreateInstance(VirtualAnimatorController controller) => new(controller);
 
@@ -109,7 +113,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         public void OneDivideAddOne(string src, string dest) =>
             RootBlendTree.AddMotion(src, VirtualBlendTree.Create($"{dest} = 1 / (1 + {src})").SetDirect(true)
-                .AddMotion(src, dummyClip ??= VirtualClip.Create("AAP Dummy"))
+                .AddMotion(src, dummyClip ??= buildContexts.TryGetValue(controller, out var context) ? DummyClips.For(context).Get() : VirtualClip.Create("Dummy"))
                 .AddMotion(GetTempParameter(1), ParameterDriverClip(dest, 1))
             );
 

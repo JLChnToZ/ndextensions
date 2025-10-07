@@ -131,10 +131,10 @@ namespace JLChnToZ.NDExtensions.Editors {
             this.isLocal = isLocal;
         }
 
-        public void ApplyTo(Component component, int refId = -1, AnimationIndex animIndex = null, Transform root = null, bool restoreScale = true) {
+        public void ApplyTo(Component component, int refId = -1, AnimationIndex animIndex = null, Transform root = null) {
             if (component is Transform transform) {
                 if (animIndex != null)
-                    animIndex.SetTransformPositionAndRotation(root, transform, position, rotation, null, isLocal);
+                    animIndex.SetTransformPositionAndRotation(root, transform, position, rotation, scale, isLocal);
                 else if (isLocal) {
 #if UNITY_2021_3_OR_NEWER
                     transform.SetLocalPositionAndRotation(position, rotation);
@@ -142,20 +142,24 @@ namespace JLChnToZ.NDExtensions.Editors {
                     transform.localPosition = position;
                     transform.localRotation = rotation;
 #endif
-                    if (restoreScale) transform.localScale = scale;
+                    transform.localScale = scale;
                 } else {
                     transform.SetPositionAndRotation(position, rotation);
-                    if (restoreScale) transform.localScale = SafeDivide(scale, transform.lossyScale);
+                    var parent = transform.parent;
+                    if (parent != null)
+                        transform.localScale = SafeDivide(scale, parent.lossyScale);
+                    else
+                        transform.localScale = scale;
                 }
                 return;
             }
             if (component is BoxCollider bc) {
                 if (isLocal) {
                     bc.center = position;
-                    if (restoreScale) bc.size = scale;
+                    bc.size = scale;
                 } else {
                     bc.center = bc.transform.InverseTransformPoint(position);
-                    if (restoreScale) bc.size = SafeDivide(scale, bc.transform.lossyScale);
+                    bc.size = SafeDivide(scale, bc.transform.lossyScale);
                 }
                 return;
             }
@@ -166,10 +170,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                     sc.radius = s;
                 } else {
                     sc.center = sc.transform.InverseTransformPoint(position);
-                    if (restoreScale) {
-                        var lossyScale = sc.transform.lossyScale;
-                        sc.radius = s / Mathf.Max(lossyScale.x, Mathf.Max(lossyScale.y, lossyScale.z));
-                    }
+                    var lossyScale = sc.transform.lossyScale;
+                    sc.radius = s / Mathf.Max(lossyScale.x, Mathf.Max(lossyScale.y, lossyScale.z));
                 }
                 return;
             }
@@ -179,23 +181,22 @@ namespace JLChnToZ.NDExtensions.Editors {
                     cc.center = position;
                 } else {
                     cc.center = cc.transform.InverseTransformPoint(position);
-                    if (restoreScale) s = SafeDivide(scale, cc.transform.lossyScale);
+                    s = SafeDivide(scale, cc.transform.lossyScale);
                 }
-                if (restoreScale)
-                    switch (cc.direction) {
-                        case 0:
-                            cc.height = s.x;
-                            cc.radius = Mathf.Max(s.y, s.z);
-                            break;
-                        case 1:
-                            cc.height = s.y;
-                            cc.radius = Mathf.Max(s.x, s.z);
-                            break;
-                        default:
-                            cc.height = s.z;
-                            cc.radius = Mathf.Max(s.x, s.y);
-                            break;
-                    }
+                switch (cc.direction) {
+                    case 0:
+                        cc.height = s.x;
+                        cc.radius = Mathf.Max(s.y, s.z);
+                        break;
+                    case 1:
+                        cc.height = s.y;
+                        cc.radius = Mathf.Max(s.x, s.z);
+                        break;
+                    default:
+                        cc.height = s.z;
+                        cc.radius = Mathf.Max(s.x, s.y);
+                        break;
+                }
                 return;
             }
 #if VRC_SDK_VRCSDK3
@@ -208,18 +209,17 @@ namespace JLChnToZ.NDExtensions.Editors {
                     transform = contact.GetRootTransform();
                     contact.position = transform.InverseTransformPoint(position);
                     contact.rotation = Quaternion.Inverse(transform.rotation) * rotation;
-                    if (restoreScale) s = SafeDivide(scale, transform.lossyScale);
+                    s = SafeDivide(scale, transform.lossyScale);
                 }
-                if (restoreScale)
-                    switch (contact.shapeType) {
-                        case ContactBase.ShapeType.Capsule:
-                            contact.height = s.y;
-                            contact.radius = Mathf.Max(s.x, s.z);
-                            break;
-                        case ContactBase.ShapeType.Sphere:
-                            contact.radius = Mathf.Max(s.x, Mathf.Max(s.y, s.z));
-                            break;
-                    }
+                switch (contact.shapeType) {
+                    case ContactBase.ShapeType.Capsule:
+                        contact.height = s.y;
+                        contact.radius = Mathf.Max(s.x, s.z);
+                        break;
+                    case ContactBase.ShapeType.Sphere:
+                        contact.radius = Mathf.Max(s.x, Mathf.Max(s.y, s.z));
+                        break;
+                }
                 return;
             }
             if (component is VRCPhysBoneColliderBase pbc) {
@@ -231,21 +231,18 @@ namespace JLChnToZ.NDExtensions.Editors {
                     transform = pbc.GetRootTransform();
                     pbc.position = transform.InverseTransformPoint(position);
                     pbc.rotation = Quaternion.Inverse(transform.rotation) * rotation;
-                    if (restoreScale) {
-                        var lossyScale = transform.lossyScale;
-                        s = SafeDivide(scale, lossyScale);
-                    }
+                    var lossyScale = transform.lossyScale;
+                    s = SafeDivide(scale, lossyScale);
                 }
-                if (restoreScale)
-                    switch (pbc.shapeType) {
-                        case VRCPhysBoneColliderBase.ShapeType.Capsule:
-                            pbc.height = s.y;
-                            pbc.radius = Mathf.Max(s.x, s.z);
-                            break;
-                        case VRCPhysBoneColliderBase.ShapeType.Sphere:
-                            pbc.radius = Mathf.Max(s.x, Mathf.Max(s.y, s.z));
-                            break;
-                    }
+                switch (pbc.shapeType) {
+                    case VRCPhysBoneColliderBase.ShapeType.Capsule:
+                        pbc.height = s.y;
+                        pbc.radius = Mathf.Max(s.x, s.z);
+                        break;
+                    case VRCPhysBoneColliderBase.ShapeType.Sphere:
+                        pbc.radius = Mathf.Max(s.x, Mathf.Max(s.y, s.z));
+                        break;
+                }
                 return;
             }
             if (component is VRCConstraintBase vrcConstraint) {
@@ -263,7 +260,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 #endif
         }
 
-        static Vector3 SafeDivide(Vector3 a, Vector3 b) => new(
+        public static Vector3 SafeDivide(Vector3 a, Vector3 b) => new(
             b.x != 0 ? a.x / b.x : 0,
             b.y != 0 ? a.y / b.y : 0,
             b.z != 0 ? a.z / b.z : 0

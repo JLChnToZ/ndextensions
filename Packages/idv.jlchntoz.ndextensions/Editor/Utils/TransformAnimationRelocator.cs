@@ -12,50 +12,29 @@ namespace JLChnToZ.NDExtensions.Editors {
             Transform transform,
             Vector3 newPos,
             Quaternion newRot,
-            Vector3? scale = null,
+            Vector3 newScale,
             bool isLocal = true
         ) {
             transform.GetLocalPositionAndRotation(out var oldPos, out var oldRot);
-            var deltaScale = Vector3.one;
+            Vector3 deltaScale;
             if (isLocal) {
                 transform.SetLocalPositionAndRotation(newPos, newRot);
                 var oldScale = transform.localScale;
-                if (scale.HasValue) {
-                    transform.localScale = scale.Value;
-                    deltaScale = new Vector3(
-                        scale.Value.x / oldScale.x,
-                        scale.Value.y / oldScale.y,
-                        scale.Value.z / oldScale.z
-                    );
-                }
+                transform.localScale = newScale;
+                deltaScale = TranslateRotate.SafeDivide(newScale, oldScale);
             } else {
                 transform.SetPositionAndRotation(newPos, newRot);
-                var oldScale = transform.lossyScale;
                 var parent = transform.parent;
                 if (parent != null) {
                     newPos = parent.InverseTransformPoint(newPos);
                     newRot = Quaternion.Inverse(parent.rotation) * newRot;
-                    if (scale.HasValue) {
-                        var newScale = new Vector3(
-                            scale.Value.x / oldScale.x,
-                            scale.Value.y / oldScale.y,
-                            scale.Value.z / oldScale.z
-                        );
-                        oldScale = parent.localScale;
-                        transform.localScale = newScale;
-                        deltaScale = new Vector3(
-                            newScale.x / oldScale.x,
-                            newScale.y / oldScale.y,
-                            newScale.z / oldScale.z
-                        );
-                    }
-                } else if (scale.HasValue) {
-                    transform.localScale = scale.Value;
-                    deltaScale = new Vector3(
-                        scale.Value.x / oldScale.x,
-                        scale.Value.y / oldScale.y,
-                        scale.Value.z / oldScale.z
-                    );
+                    newScale = TranslateRotate.SafeDivide(newScale, parent.lossyScale);
+                    var oldScale = transform.localScale;
+                    transform.localScale = newScale;
+                    deltaScale = TranslateRotate.SafeDivide(newScale, oldScale);
+                } else {
+                    transform.localScale = newScale;
+                    deltaScale = newScale;
                 }
             }
             var deltaPos = newPos - oldPos;

@@ -76,7 +76,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         void RestoreCachedPositions(bool restoreAnimation = true) {
             foreach (var c in cachedPositions)
-                c.Value.ApplyTo(c.Key.component, c.Key.refId, restoreAnimation ? animationIndex : null, root, false);
+                c.Value.ApplyTo(c.Key.component, c.Key.refId, restoreAnimation ? animationIndex : null, root);
             cachedPositions.Clear();
         }
 

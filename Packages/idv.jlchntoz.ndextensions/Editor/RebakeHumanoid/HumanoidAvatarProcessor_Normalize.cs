@@ -165,6 +165,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 var rotation = root.rotation;
 #endif
                 transform.SetPositionAndRotation(position, rotation);
+                //transform.localScale = Vector3.one;
                 RecordMovedBone(transform, orgMatrix);
                 RestoreCachedPositions();
             }

@@ -12,17 +12,50 @@ namespace JLChnToZ.NDExtensions.Editors {
             Transform transform,
             Vector3 newPos,
             Quaternion newRot,
+            Vector3? scale = null,
             bool isLocal = true
         ) {
             transform.GetLocalPositionAndRotation(out var oldPos, out var oldRot);
-            if (isLocal)
+            var deltaScale = Vector3.one;
+            if (isLocal) {
                 transform.SetLocalPositionAndRotation(newPos, newRot);
-            else {
+                var oldScale = transform.localScale;
+                if (scale.HasValue) {
+                    transform.localScale = scale.Value;
+                    deltaScale = new Vector3(
+                        scale.Value.x / oldScale.x,
+                        scale.Value.y / oldScale.y,
+                        scale.Value.z / oldScale.z
+                    );
+                }
+            } else {
                 transform.SetPositionAndRotation(newPos, newRot);
+                var oldScale = transform.lossyScale;
                 var parent = transform.parent;
                 if (parent != null) {
                     newPos = parent.InverseTransformPoint(newPos);
                     newRot = Quaternion.Inverse(parent.rotation) * newRot;
+                    if (scale.HasValue) {
+                        var newScale = new Vector3(
+                            scale.Value.x / oldScale.x,
+                            scale.Value.y / oldScale.y,
+                            scale.Value.z / oldScale.z
+                        );
+                        oldScale = parent.localScale;
+                        transform.localScale = newScale;
+                        deltaScale = new Vector3(
+                            newScale.x / oldScale.x,
+                            newScale.y / oldScale.y,
+                            newScale.z / oldScale.z
+                        );
+                    }
+                } else if (scale.HasValue) {
+                    transform.localScale = scale.Value;
+                    deltaScale = new Vector3(
+                        scale.Value.x / oldScale.x,
+                        scale.Value.y / oldScale.y,
+                        scale.Value.z / oldScale.z
+                    );
                 }
             }
             var deltaPos = newPos - oldPos;
@@ -34,13 +67,13 @@ namespace JLChnToZ.NDExtensions.Editors {
                     if (binding.type != typeof(Transform) && binding.path != path) continue;
                     switch (binding.propertyName) {
                         case "m_LocalPosition.x":
-                            OffsetSingle(clip, binding, deltaPos.x);
+                            OffsetSingle(clip, binding, deltaPos.x, 1);
                             break;
                         case "m_LocalPosition.y":
-                            OffsetSingle(clip, binding, deltaPos.y);
+                            OffsetSingle(clip, binding, deltaPos.y, 1);
                             break;
                         case "m_LocalPosition.z":
-                            OffsetSingle(clip, binding, deltaPos.z);
+                            OffsetSingle(clip, binding, deltaPos.z, 1);
                             break;
                         case "localRotation.x":
                         case "m_LocalRotation.x":
@@ -82,21 +115,33 @@ namespace JLChnToZ.NDExtensions.Editors {
                         case "m_LocalEulerAnglesRaw.z":
                             eulerZ = binding;
                             break;
+                        case "m_LocalScale.x":
+                            OffsetSingle(clip, binding, 0, deltaScale.x);
+                            break;
+                        case "m_LocalScale.y":
+                            OffsetSingle(clip, binding, 0, deltaScale.y);
+                            break;
+                        case "m_LocalScale.z":
+                            OffsetSingle(clip, binding, 0, deltaScale.z);
+                            break;
                     }
-                    if (qX.HasValue && qY.HasValue && qZ.HasValue && qW.HasValue)
+                    if (qX.HasValue && qY.HasValue && qZ.HasValue && qW.HasValue) {
                         OffsetRotation(clip, qX.Value, qY.Value, qZ.Value, qW.Value, deltaRot);
-                    else if (eulerX.HasValue && eulerY.HasValue && eulerZ.HasValue)
+                        qX = qY = qZ = qW = null;
+                    } else if (eulerX.HasValue && eulerY.HasValue && eulerZ.HasValue) {
                         OffsetRotation(clip, eulerX.Value, eulerY.Value, eulerZ.Value, deltaRot);
+                        eulerX = eulerY = eulerZ = null;
+                    }
                 }
             }
         }
 
-        static void OffsetSingle(VirtualClip clip, EditorCurveBinding binding, float offset) {
+        static void OffsetSingle(VirtualClip clip, EditorCurveBinding binding, float offset, float scale) {
             var curve = clip.GetFloatCurve(binding);
             if (curve == null) return;
             for (var i = 0; i < curve.length; i++) {
                 var key = curve[i];
-                key.value += offset;
+                key.value = key.value * scale + offset;
                 curve.MoveKey(i, key);
             }
             clip.SetFloatCurve(binding, curve);

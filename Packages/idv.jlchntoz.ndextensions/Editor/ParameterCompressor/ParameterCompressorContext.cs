@@ -20,8 +20,8 @@ using VRCLayerType = VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerTy
 namespace JLChnToZ.NDExtensions.Editors {
     [DependsOnContext(typeof(AnimatorServicesContext))]
     public class ParameterCompressorContext : IExtensionContext {
-        public static int CountRequiredParameterBits(int i, int b) {
-            i += (b + 15) >> 3;
+        public static int CountRequiredParameterBits(int i, int b, int bPerBank) {
+            i += (b + bPerBank - 1) / bPerBank - 1;
             i |= i >> 1;
             i |= i >> 2;
             i |= i >> 4;
@@ -53,6 +53,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         VirtualStateMachine syncLayerRoot, rootReceiverSM, rootSenderSM;
         VirtualClip emptyDelayClip;
         int indexCount, totalCount;
+        int boolParameterPerBank = 8;
 
         static bool IsFlagOn(int flags, int bit) => (flags & (1 << bit)) != 0;
 
@@ -85,11 +86,12 @@ namespace JLChnToZ.NDExtensions.Editors {
                 if (parameter != null) parameters.Add(parameter);
         }
 
-        public void Init(int parameterCount, int boolsCount, float threshold) {
+        public void Init(int parameterCount, int boolsCount, int boolParameterPerBank, float threshold) {
             emptyDelayClip = dummyClips.Get(threshold);
             syncParamName = GetUniqueParameter("__CompParam/Value", VRCParameterType.Int);
-            totalCount = parameterCount + (boolsCount + 7) / 8;
-            int requiredBits = CountRequiredParameterBits(parameterCount, boolsCount);
+            this.boolParameterPerBank = boolParameterPerBank;
+            totalCount = parameterCount + (boolsCount + boolParameterPerBank - 1) / boolParameterPerBank;
+            int requiredBits = CountRequiredParameterBits(parameterCount, boolsCount, boolParameterPerBank);
             syncParamRefNames = new string[requiredBits];
             for (int i = 0; i < requiredBits; i++)
                 syncParamRefNames[i] = GetUniqueParameter($"__CompParam/Ref{i}", VRCParameterType.Bool);
@@ -154,7 +156,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (!parameterWillProcess.TryGetValue(name, out var p)) return;
             if (p.valueType == VRCParameterType.Bool) {
                 boolParameters.Add(p.name);
-                if (boolParameters.Count >= 8) ProcessBoolParameterBank();
+                if (boolParameters.Count >= boolParameterPerBank) ProcessBoolParameterBank();
                 return;
             }
             int uniqueIndex = ++indexCount;

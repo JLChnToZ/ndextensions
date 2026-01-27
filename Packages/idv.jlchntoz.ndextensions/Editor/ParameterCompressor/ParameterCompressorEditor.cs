@@ -36,7 +36,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                     if (p.type == ACParameterType.Bool) boolsCount++;
                     else parameterCount++;
                 }
-            for (int i = 0, count = ParameterCompressorContext.CountRequiredParameterBits(parameterCount, boolsCount); i < count; i++)
+            for (int i = 0, count = ParameterCompressorContext.CountRequiredParameterBits(parameterCount, boolsCount, parameterCompressor.bitsPerParameter); i < count; i++)
                 yield return new(
                     $"__CompParam/Ref{i}",
                     ParameterNamespace.Animator,
@@ -58,7 +58,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         const int maxParameterCost = 0;
 #endif
         readonly ConditionalWeakTable<Component, ComponentMenu> componentMenus = new();
-        SerializedProperty parametersProperty, thresholdProperty;
+        SerializedProperty parametersProperty, thresholdProperty, bitsPerParameterProperty;
         readonly HashSet<AnimatorParameterRef> enabledParameters = new();
         readonly HashSet<Component> expandedComponents = new();
         readonly Dictionary<Component, HashSet<Parameter>> allParameters = new();
@@ -68,6 +68,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             base.OnEnable();
             parametersProperty = serializedObject.FindProperty(nameof(ParameterCompressor.parameters));
             thresholdProperty = serializedObject.FindProperty(nameof(ParameterCompressor.threshold));
+            bitsPerParameterProperty = serializedObject.FindProperty(nameof(ParameterCompressor.bitsPerParameter));
             RefreshAllParameters();
             LoadEnabledParameters();
         }
@@ -107,6 +108,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                 LoadEnabledParameters();
             }
             EditorGUILayout.PropertyField(thresholdProperty, i18n.GetContent("ParameterCompressor.threshold"));
+            using (var changed = new EditorGUI.ChangeCheckScope()) {
+                EditorGUILayout.PropertyField(bitsPerParameterProperty, i18n.GetContent("ParameterCompressor.bitsPerParameter"));
+                if (changed.changed) LoadEnabledParameters();
+            }
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(i18n["ParameterCompressor:selectParameters"], EditorStyles.boldLabel);
             foreach (var (component, parameters) in allParameters) {
@@ -246,7 +251,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void UpdateBitCount() => parameterBitCount = savedParameterCount > 0 || savedBoolParameterCount > 0 ?
-            ParameterCompressorContext.CountRequiredParameterBits(savedParameterCount, savedBoolParameterCount) + 8 :
+            ParameterCompressorContext.CountRequiredParameterBits(savedParameterCount, savedBoolParameterCount, bitsPerParameterProperty.intValue) + 8 :
             0;
 
         readonly struct Parameter : IEquatable<Parameter> {

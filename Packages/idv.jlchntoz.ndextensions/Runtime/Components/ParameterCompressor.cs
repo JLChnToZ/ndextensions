@@ -6,5 +6,6 @@ namespace JLChnToZ.NDExtensions {
         [AnimatorParameterRefUsage(EnforcedType = ParameterType.Synchronized)]
         public AnimatorParameterRef[] parameters;
         [Min(0)] public float threshold = 0.2F;
+        [Range(1, 8)] public int bitsPerParameter = 6;
     }
 }

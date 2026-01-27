@@ -36,6 +36,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             var allParameters = new HashSet<string>();
             int boolsCount = 0, intFloatsCount = 0;
             float threshold = 0F;
+            int bitsPerParameter = 8;
             foreach (var component in context.AvatarRootObject.GetComponentsInChildren<ParameterCompressor>(true)) {
                 if (component == null) continue;
                 if (component.parameters != null)
@@ -57,10 +58,11 @@ namespace JLChnToZ.NDExtensions.Editors {
 #endif
                     }
                 threshold = Math.Max(threshold, component.threshold);
+                bitsPerParameter = Math.Min(bitsPerParameter, component.bitsPerParameter);
                 UnityObject.DestroyImmediate(component);
             }
             if (allParameters.Count == 0) return;
-            paramCompressor.Init(intFloatsCount, boolsCount, threshold);
+            paramCompressor.Init(intFloatsCount, boolsCount, bitsPerParameter, threshold);
             foreach (var parameter in allParameters)
                 paramCompressor.ProcessParameter(parameter);
             paramCompressor.FinalizeParameterConnections();

@@ -57,6 +57,8 @@
     "RebakeHumanoid.override": "Override Bone Mapping",
     "RebakeHumanoid.override:tooltip": "Use other transforms as bones instead of the original bones defined in the avatar.",
     "RebakeHumanoid.override:forced": "You don't have a valid humanoid avatar, manual bone mapping is required.",
+    "RebakeHumanoid.usePathForOverride": "Use Path for Override",
+    "RebakeHumanoid.usePathForOverride:tooltip": "Use the path of the transform instead of the transform reference for the override.\nThis is useful if the transform will be replaced by another plugin or prefab, and the path will remain the same.",
     "RebakeHumanoid.boneMapping": "Bone Mapping",
     "RebakeHumanoid:copy": "Copy",
     "RebakeHumanoid:guess": "Guess",
@@ -110,6 +112,9 @@
     "ParameterCompressor.ping": "Ping this component",
     "ParameterCompressor.select": "Select this component",
     "ParameterCompressor.properties": "Show component properties",
+    "ParameterCompressor.dangled": "Dangled Parameters",
+    "ParameterCompressor.dangled:tooltip": "Parameters used to have a source component but it is gone now.",
+    "ParameterCompressor.cleanDangled": "Clear",
     "ParameterProvider": "This parameter is provided by {0} ({1})."
   },
   "zh-hant": {
@@ -171,6 +176,8 @@
     "RebakeHumanoid.override": "覆蓋骨骼映射",
     "RebakeHumanoid.override:tooltip": "使用其他物件作為人形骨骼，而不是原始 avatar 中定義的骨骼。",
     "RebakeHumanoid.override:forced": "你目前沒有有效的人形骨架定義，手動骨骼映射是必需的。",
+    "RebakeHumanoid.usePathForOverride": "使用路徑覆蓋",
+    "RebakeHumanoid.usePathForOverride:tooltip": "使用物件的路徑而不是物件引用作為覆蓋骨骼。\n如果物件將被其他插件或預製件替換，並且路徑保持不變，這將非常有用。",
     "RebakeHumanoid.boneMapping": "骨骼映射",
     "RebakeHumanoid:copy": "複製",
     "RebakeHumanoid:guess": "從名稱猜測",
@@ -222,6 +229,9 @@
     "ParameterCompressor.ping": "Ping 此元件",
     "ParameterCompressor.select": "選擇此元件",
     "ParameterCompressor.properties": "顯示元件屬性",
+    "ParameterCompressor.dangled": "懸空參數",
+    "ParameterCompressor.dangled:tooltip": "曾經有來源元件但現在已消失的參數。",
+    "ParameterCompressor.cleanDangled": "清理",
     "ParameterProvider": "此參數由 {0} ({1}) 提供。"
   },
   "zh-hans": {
@@ -283,6 +293,8 @@
     "RebakeHumanoid.override": "覆盖骨骼映射",
     "RebakeHumanoid.override:tooltip": "使用其他物件作为人形骨骼，而不是原始 avatar 中定义的骨骼。",
     "RebakeHumanoid.override:forced": "你目前没有有效的人形骨架定义，手动骨骼映射是必须的。",
+    "RebakeHumanoid.usePathForOverride": "使用路径覆盖",
+    "RebakeHumanoid.usePathForOverride:tooltip": "使用物件的路径而不是物件引用作为覆盖骨骼。\n如果物件将被其他插件或预制件替换，并且路径保持不变，这将非常有用。",
     "RebakeHumanoid.boneMapping": "骨骼映射",
     "RebakeHumanoid:copy": "复制",
     "RebakeHumanoid:guess": "从名称猜测",
@@ -334,6 +346,9 @@
     "ParameterCompressor.ping": "Ping 此元件",
     "ParameterCompressor.select": "选择此元件",
     "ParameterCompressor.properties": "显示元件属性",
+    "ParameterCompressor.dangled": "悬空参数",
+    "ParameterCompressor.dangled:tooltip": "曾经有来源元件但现在已消失的参数。",
+    "ParameterCompressor.cleanDangled": "清理",
     "ParameterProvider": "此参数由 {0} ({1}) 提供。"
   },
   "ja": {
@@ -395,6 +410,8 @@
     "RebakeHumanoid.override": "ボーンマッピングをオーバーライド",
     "RebakeHumanoid.override:tooltip": "アバターで定義された元のボーンの代わりに、他のトランスフォームをボーンとして使用します。",
     "RebakeHumanoid.override:forced": "有効なヒューマノイドアバターがありません。手動のボーンマッピングが必要です。",
+    "RebakeHumanoid.usePathForOverride": "パスを使用してオーバーライド",
+    "RebakeHumanoid.usePathForOverride:tooltip": "ボーンのオーバーライドとして、オブジェクト参照ではなくオブジェクトのパスを使用します。\nオブジェクトが他のプラグインやプレハブによって置き換えられ、パスが変更されない場合に便利です。",
     "RebakeHumanoid.boneMapping": "ボーンマッピング",
     "RebakeHumanoid:copy": "コピー",
     "RebakeHumanoid:guess": "名前から推測",
@@ -446,6 +463,9 @@
     "ParameterCompressor.ping": "このコンポーネントをPing",
     "ParameterCompressor.select": "このコンポーネントを選択",
     "ParameterCompressor.properties": "コンポーネントのプロパティを表示",
+    "ParameterCompressor.dangled": "ぶら下がっているパラメーター",
+    "ParameterCompressor.dangled:tooltip": "以前はソースコンポーネントがありましたが、現在は消失しているパラメーター。",
+    "ParameterCompressor.cleanDangled": "クリーンアップ",
     "ParameterProvider": "このパラメーターは {0} ({1}) によって提供されます。"
   },
   "ko": {
@@ -507,6 +527,8 @@
     "RebakeHumanoid.override": "뼈 매핑 재정의",
     "RebakeHumanoid.override:tooltip": "원래 아바타에 정의된 원래 뼈 대신 다른 변환을 뼈로 사용합니다.",
     "RebakeHumanoid.override:forced": "유효한 인간 아바타가 없습니다. 수동 뼈 매핑이 필요합니다.",
+    "RebakeHumanoid.usePathForOverride": "재정의를 위해 경로 사용",
+    "RebakeHumanoid.usePathForOverride:tooltip": "뼈 재정의로서 오브젝트 참조 대신 오브젝트 경로를 사용합니다.\n오브젝트가 다른 플러그인이나 프리팹에 의해 교체되고 경로가 변경되지 않는 경우 유용합니다.",
     "RebakeHumanoid.boneMapping": "뼈 매핑",
     "RebakeHumanoid:copy": "복사",
     "RebakeHumanoid:guess": "이름에서 추측",
@@ -558,6 +580,9 @@
     "ParameterCompressor.ping": "이 구성 요소에 Ping",
     "ParameterCompressor.select": "이 구성 요소 선택",
     "ParameterCompressor.properties": "구성 요소 속성 표시",
+    "ParameterCompressor.dangled": "매달린 파라미터",
+    "ParameterCompressor.dangled:tooltip": "이전에 소스 구성 요소가 있었지만 현재는 사라진 매개변수입니다.",
+    "ParameterCompressor.cleanDangled": "정리",
     "ParameterProvider": "이 매개변수는 {0} ({1})에 의해 제공됩니다."
   }
 }

@@ -36,7 +36,13 @@ namespace JLChnToZ.NDExtensions {
         public readonly bool Equals(AnimatorParameterRef other) =>
             name == other.name &&
             type == other.type &&
-            InstanceID == other.InstanceID;
+            (source != null ?
+                other.source != null ?
+                    source == other.source :
+                source.GetInstanceID() == other.instanceID :
+            other.source != null ?
+                instanceID == other.source.GetInstanceID() :
+            !instanceID.HasValue || !other.instanceID.HasValue || instanceID.Value == other.instanceID.Value);
 
         public override readonly bool Equals(object obj) =>
             obj is AnimatorParameterRef other && Equals(other);

@@ -26,6 +26,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         SerializedProperty rendererWithBareFeetProp;
         SerializedProperty manualOffsetProp;
         SerializedProperty overrideProp;
+        SerializedProperty usePathForOverrideProp;
         SerializedProperty boneMappingProp;
         SerializedProperty overrideHumanModeProp;
         SerializedProperty armStretchProp;
@@ -57,6 +58,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             adjustViewpointProp = serializedObject.FindProperty(nameof(RebakeHumanoid.adjustViewpoint));
 #endif
             overrideProp = serializedObject.FindProperty(nameof(RebakeHumanoid.@override));
+            usePathForOverrideProp = serializedObject.FindProperty(nameof(RebakeHumanoid.usePathForOverride));
             boneMappingProp = serializedObject.FindProperty(nameof(RebakeHumanoid.boneMapping));
             var overrideHumanProp = serializedObject.FindProperty(nameof(RebakeHumanoid.overrideHuman));
             overrideHumanModeProp = overrideHumanProp.FindPropertyRelative(nameof(OverrideHumanDescription.mode));
@@ -197,6 +199,7 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void DrawBones(bool hasValidAvatar) {
+            EditorGUILayout.PropertyField(usePathForOverrideProp, i18n.GetContent("RebakeHumanoid.usePathForOverride"), defaultLayout);
             using (new EditorGUILayout.HorizontalScope(defaultLayout)) {
                 using (new EditorGUI.DisabledScope(!hasValidAvatar))
                     if (GUILayout.Button(i18n.GetContent("RebakeHumanoid:copy"), defaultLayout)) FetchBones(true);

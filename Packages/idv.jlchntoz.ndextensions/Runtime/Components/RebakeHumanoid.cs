@@ -16,6 +16,7 @@ namespace JLChnToZ.NDExtensions {
         public bool fixBoneOrientation;
         public bool fixCrossLegs;
         public bool @override;
+        public bool usePathForOverride;
         [FormerlySerializedAs("overrideBones")] public Transform[] boneMapping;
         public OverrideHumanDescription overrideHuman;
         Animator animator;

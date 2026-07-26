@@ -45,7 +45,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                 declaration.fixBoneOrientation,
                 declaration.fixCrossLegs,
                 declaration.fixPoseMode,
-                declaration.@override ? declaration.boneMapping : null,
+                declaration.@override ?
+                    declaration.usePathForOverride && rebakeContext.Paths != null ?
+                    PathToTransforms(ctx.AvatarRootTransform, rebakeContext.Paths) :
+                    declaration.boneMapping :
+                    null,
                 declaration.overrideHuman,
                 animContext.AnimationIndex
             );
@@ -58,6 +62,16 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
 #endif
             DestroyImmediate(declaration);
+        }
+
+        static Transform[] PathToTransforms(Transform root, string[] paths) {
+            var transforms = new Transform[paths.Length];
+            for (int i = 0; i < paths.Length; i++) {
+                var path = paths[i];
+                if (string.IsNullOrEmpty(path)) continue;
+                transforms[i] = root.Find(path);
+            }
+            return transforms;
         }
 
         static Vector3 MeasureEyePosition(RebakeHumanoid declaration) {

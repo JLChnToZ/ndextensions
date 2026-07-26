@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEditor;
+using UnityEngine.Pool;
 using nadena.dev.ndmf;
 using ACParameterType = UnityEngine.AnimatorControllerParameterType;
-using System.Runtime.CompilerServices;
 #if VRC_SDK_VRCSDK3
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
@@ -57,12 +58,14 @@ namespace JLChnToZ.NDExtensions.Editors {
 #else
         const int maxParameterCost = 0;
 #endif
+        static GUIContent warningIconContent;
         readonly ConditionalWeakTable<Component, ComponentMenu> componentMenus = new();
         SerializedProperty parametersProperty, thresholdProperty, bitsPerParameterProperty;
         readonly HashSet<AnimatorParameterRef> enabledParameters = new();
         readonly HashSet<Component> expandedComponents = new();
-        readonly Dictionary<Component, HashSet<Parameter>> allParameters = new();
+        readonly Dictionary<Component, Dictionary<AnimatorParameterRef, Parameter>> allParameters = new();
         int currentParameterCost = 0, savedParameterCost = 0, savedParameterCount = 0, savedBoolParameterCount = 0, parameterBitCount = 0;
+        bool expandedDangledParameters = true;
 
         protected override void OnEnable() {
             base.OnEnable();
@@ -114,39 +117,96 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(i18n["ParameterCompressor:selectParameters"], EditorStyles.boldLabel);
-            foreach (var (component, parameters) in allParameters) {
-                if (component == null || parameters.Count == 0) continue;
-                bool folded = expandedComponents.Contains(component);
-                using (var changed = new EditorGUI.ChangeCheckScope()) {
-                    if (!componentMenus.TryGetValue(component, out var menu)) {
-                        menu = new ComponentMenu(this, component);
-                        componentMenus.Add(component, menu);
-                    }
-                    folded = EditorGUILayout.BeginFoldoutHeaderGroup(
-                        folded,
-                        EditorGUIUtility.ObjectContent(component, component.GetType()),
-                        menuAction: menu.ShowMenu
-                    );
-                    if (changed.changed) {
-                        if (folded) expandedComponents.Add(component);
-                        else expandedComponents.Remove(component);
-                    }
-                }
-                if (folded)
-                    foreach (var parameter in parameters) {
-                        bool enabled = enabledParameters.Contains(parameter.reference);
-                        bool newEnabled = EditorGUILayout.ToggleLeft(parameter.ToString(), enabled);
-                        if (newEnabled != enabled) {
-                            LoadEnabledParameters();
-                            if (newEnabled) AddParameter(parameter.reference);
-                            else RemoveParameter(parameter.reference);
-                            UpdateBitCount();
-                            SaveEnabledParameters();
+            using (HashSetPool<AnimatorParameterRef>.Get(out var dangledParameters)) {
+                dangledParameters.UnionWith(enabledParameters);
+                foreach (var (component, parameters) in allParameters) {
+                    if (component == null || parameters.Count == 0) continue;
+                    bool folded = expandedComponents.Contains(component);
+                    using (var changed = new EditorGUI.ChangeCheckScope()) {
+                        if (!componentMenus.TryGetValue(component, out var menu)) {
+                            menu = new ComponentMenu(this, component);
+                            componentMenus.Add(component, menu);
+                        }
+                        folded = EditorGUILayout.BeginFoldoutHeaderGroup(
+                            folded,
+                            EditorGUIUtility.ObjectContent(component, component.GetType()),
+                            menuAction: menu.ShowMenu
+                        );
+                        if (changed.changed) {
+                            if (folded) expandedComponents.Add(component);
+                            else expandedComponents.Remove(component);
                         }
                     }
-                EditorGUILayout.EndFoldoutHeaderGroup();
+                    if (folded)
+                        foreach (var (reference, parameter) in parameters) {
+                            dangledParameters.Remove(reference);
+                            bool enabled = enabledParameters.Contains(reference);
+                            bool newEnabled = EditorGUILayout.ToggleLeft(parameter.ToString(), enabled);
+                            if (newEnabled != enabled) {
+                                LoadEnabledParameters();
+                                if (newEnabled) AddParameter(parameter.reference);
+                                else RemoveParameter(parameter.reference);
+                                UpdateBitCount();
+                                SaveEnabledParameters();
+                            }
+                        }
+                    else
+                        dangledParameters.ExceptWith(parameters.Keys);
+                    EditorGUILayout.EndFoldoutHeaderGroup();
+                }
+                if (dangledParameters.Count > 0) {
+                    EditorGUILayout.Space();
+                    warningIconContent ??= EditorGUIUtility.IconContent("Error");
+                    var temp = i18n.GetContent("ParameterCompressor.dangled");
+                    temp.image = warningIconContent.image;
+                    expandedDangledParameters = EditorGUILayout.BeginFoldoutHeaderGroup(
+                        expandedDangledParameters,
+                        temp,
+                        menuAction: DangleParametersFoldupMenu
+                    );
+                    if (expandedDangledParameters)
+                        foreach (var parameter in dangledParameters)
+                            if (!EditorGUILayout.ToggleLeft(new Parameter(parameter).ToString(), true)) {
+                                LoadEnabledParameters();
+                                RemoveParameter(parameter);
+                                UpdateBitCount();
+                                SaveEnabledParameters();
+                            }
+                }
             }
             serializedObject.ApplyModifiedProperties();
+        }
+
+        void DangleParametersFoldupMenu(Rect rect) {
+            var menu = new GenericMenu();
+            menu.AddItem(new(i18n.GetContent("ParameterCompressor.cleanDangled")), false, CleanDangled);
+            menu.DropDown(rect);
+        }
+
+        void CleanDangled() {
+            serializedObject.Update();
+            LoadEnabledParameters();
+            using (ListPool<AnimatorParameterRef>.Get(out var toRemove)) {
+                foreach (var parameter in enabledParameters)
+                    if (parameter.source == null)
+                        toRemove.Add(parameter);
+                foreach (var parameter in toRemove)
+                    RemoveParameter(parameter);
+            }
+            UpdateBitCount();
+            SaveEnabledParameters();
+            serializedObject.ApplyModifiedProperties();
+        }
+
+        Component ResolveParameterRoot(Component component) {
+            if (component == null) return null;
+            var animator = component.GetComponentInParent<Animator>(true);
+            if (animator != null) component = animator;
+#if VRC_SDK_VRCSDK3
+            var descriptor = component.GetComponentInParent<VRCAvatarDescriptor>(true);
+            if (descriptor != null) component = descriptor;
+#endif
+            return component;
         }
 
         void LoadEnabledParameters() {
@@ -158,11 +218,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                 var name = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.name)).stringValue;
                 var type = (ACParameterType)parameter.FindPropertyRelative(nameof(AnimatorParameterRef.type)).intValue;
                 var source = parameter.FindPropertyRelative(nameof(AnimatorParameterRef.source)).objectReferenceValue as Component;
-                if (source == null) continue;
                 var entry = new AnimatorParameterRef(name, type, source);
                 enabledParameters.Add(entry);
+                if (source == null) continue;
                 if (allParameters.TryGetValue(source, out var parameters) &&
-                    parameters.Contains(new(entry))) {
+                    parameters.ContainsKey(entry)) {
                     savedParameterCost += type switch {
                         ACParameterType.Float => 8,
                         ACParameterType.Int => 8,
@@ -190,14 +250,8 @@ namespace JLChnToZ.NDExtensions.Editors {
         }
 
         void RefreshAllParameters() {
-            var target = this.target as Component;
+            var target = ResolveParameterRoot(this.target as Component);
             if (target == null) return;
-            var animator = target.GetComponentInParent<Animator>(true);
-            if (animator != null) target = animator;
-#if VRC_SDK_VRCSDK3
-            var descriptor = target.GetComponentInParent<VRCAvatarDescriptor>(true);
-            if (descriptor != null) target = descriptor;
-#endif
             currentParameterCost = 0;
             foreach (var parameters in allParameters.Values) parameters.Clear();
             foreach (var entry in ParameterInfo.ForUI.GetParametersForObject(target.gameObject)) {
@@ -209,8 +263,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                         parameters = new();
                         allParameters[source] = parameters;
                     }
-                    if (entry.Namespace == ParameterNamespace.Animator)
-                        parameters.Add(new(entry));
+                    if (entry.Namespace == ParameterNamespace.Animator) {
+                        var reference = new AnimatorParameterRef(entry.OriginalName, entry.ParameterType ?? ACParameterType.Float, source);
+                        parameters.Add(reference, new(reference));
+                    }
                 }
                 if (entry.Namespace == ParameterNamespace.Animator)
                     currentParameterCost += entry.ParameterType switch {
@@ -258,18 +314,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             public readonly AnimatorParameterRef reference;
             public readonly string effectiveName;
 
-            public Parameter(ProvidedParameter reference) {
-                this.reference = new(
-                    reference.OriginalName,
-                    reference.ParameterType ?? ACParameterType.Float,
-                    reference.Source
-                );
-                effectiveName = reference.EffectiveName;
-            }
-
-            public Parameter(AnimatorParameterRef reference) {
+            public Parameter(AnimatorParameterRef reference, string effectiveName = null) {
                 this.reference = reference;
-                effectiveName = reference.name;
+                this.effectiveName = effectiveName ?? reference.name;
             }
 
             public bool Equals(Parameter other) => reference.Equals(other.reference);
@@ -309,8 +356,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                 parent.LoadEnabledParameters();
                 if (!parent.allParameters.TryGetValue(component, out var parameters))
                     return;
-                foreach (var parameter in parameters)
-                    parent.AddParameter(parameter.reference);
+                foreach (var parameter in parameters.Keys)
+                    parent.AddParameter(parameter);
                 parent.UpdateBitCount();
                 parent.SaveEnabledParameters();
                 parent.serializedObject.ApplyModifiedProperties();
@@ -322,8 +369,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                 parent.LoadEnabledParameters();
                 if (!parent.allParameters.TryGetValue(component, out var parameters))
                     return;
-                foreach (var parameter in parameters)
-                    parent.RemoveParameter(parameter.reference);
+                foreach (var parameter in parameters.Keys)
+                    parent.RemoveParameter(parameter);
                 parent.UpdateBitCount();
                 parent.SaveEnabledParameters();
                 parent.serializedObject.ApplyModifiedProperties();

@@ -4,12 +4,18 @@ using nadena.dev.ndmf;
 namespace JLChnToZ.NDExtensions.Editors {
     class RebakeHumanoidContext : IExtensionContext {
         float bareFeetOffset;
+        string[] paths;
         Vector3 orgPos;
         Quaternion orgRot;
 
         public float BareFeetOffset {
             get => bareFeetOffset;
             set => bareFeetOffset = value;
+        }
+
+        public string[] Paths {
+            get => paths;
+            set => paths = value;
         }
 
         public void OnActivate(BuildContext context) {

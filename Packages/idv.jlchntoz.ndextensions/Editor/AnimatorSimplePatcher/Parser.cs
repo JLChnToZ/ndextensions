@@ -82,15 +82,21 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             ExpectSymbol("(");
             var condition = ParseOr();
             ExpectSymbol(")");
-            ExpectSymbol("{");
-            var thenBlock = ParseBlock(true);
+            var thenBlock = ParseIfBody();
             Block elseBlock = null;
             if (IsName(Current, "else")) {
                 position++;
-                ExpectSymbol("{");
-                elseBlock = ParseBlock(true);
+                elseBlock = ParseIfBody();
             }
             return new IfStatement(start.row, start.col, condition, thenBlock, elseBlock);
+        }
+
+        Block ParseIfBody() {
+            if (MatchSymbol("{")) return ParseBlock(true);
+            var block = new Block();
+            blocks.Add(block);
+            block.statements.Add(ParseStatement());
+            return block;
         }
 
         Statement ParseWait() {

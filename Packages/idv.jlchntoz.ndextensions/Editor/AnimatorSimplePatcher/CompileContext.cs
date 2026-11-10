@@ -660,7 +660,10 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                         var transform = TryResolveTarget(animation.target, out var target);
                         if (transform == null)
                             throw new ParseException(animation.row, animation.col, $"Could not map transform '{animation.target}' to an animation path.");
-                        animation.resolvedPath = pathRemapper.GetVirtualPathForObject(transform);
+                        if (animation.type == typeof(Animator) && transform == fallbackRoot)
+                            animation.resolvedPath = ""; // Self modifying animator
+                        else
+                            animation.resolvedPath = pathRemapper.GetVirtualPathForObject(transform);
                         if (animation.type == null) animation.type = target.GetType();
                         if (animation.IsPointerCurve) {
                             if (references == null || !references.TryGetValue(animation.refName, out var reference) || reference == null)

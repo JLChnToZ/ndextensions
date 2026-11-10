@@ -27,6 +27,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             .Run(ParameterValueFilterPass.Instance).Then
             .Run(ConstraintReducerPass.Instance).Then
             .Run(RebakeHumanoidPass.Instance).Then
+            .Run(AnimatorSimplePatcherPass.Instance).Then
             .Run(ParameterCompressorPrePass.Instance);
 
             InPhase(BuildPhase.Optimizing)

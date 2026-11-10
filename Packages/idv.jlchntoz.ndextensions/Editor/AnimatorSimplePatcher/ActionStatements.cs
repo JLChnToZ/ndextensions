@@ -1,0 +1,58 @@
+using System;
+using UnityObject = UnityEngine.Object;
+
+namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
+    abstract class ActionStatement : Statement {
+        protected ActionStatement(int row, int col) : base(row, col) { }
+    }
+
+    sealed class AnimationStatement : ActionStatement {
+        public readonly string target;
+        public Type type;
+        public readonly string property;
+        public readonly float value;
+        public readonly string refName;
+        public readonly EasingFactory.EasingType easing;
+        public readonly float easingDuration;
+        public string resolvedPath;
+        public UnityObject resolvedRef;
+
+        public AnimationStatement(
+            int row, int col, string target, Type type, string property, float value, string refName,
+            EasingFactory.EasingType easing, float easingDuration
+        ) : base(row, col) {
+            this.target = target;
+            this.type = type;
+            this.property = property;
+            this.value = value;
+            this.refName = refName;
+            this.easing = easing;
+            this.easingDuration = easingDuration;
+        }
+
+        public bool IsPointerCurve => refName != null;
+    }
+
+    sealed class SetStatement : ActionStatement {
+        public readonly string parameter;
+        public readonly SetOperation operation;
+        public readonly Value value;
+        public readonly float min, max;
+        public readonly bool local;
+
+        public SetStatement(int row, int col, string parameter, SetOperation operation, Value value, float min, float max, bool local) : base(row, col) {
+            this.parameter = parameter;
+            this.operation = operation;
+            this.value = value;
+            this.min = min;
+            this.max = max;
+            this.local = local;
+        }
+    }
+
+    enum SetOperation : byte {
+        Assign,
+        Add,
+        Subtract,
+    }
+}

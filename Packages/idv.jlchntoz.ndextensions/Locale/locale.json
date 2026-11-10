@@ -115,6 +115,15 @@
     "ParameterCompressor.dangled": "Dangled Parameters",
     "ParameterCompressor.dangled:tooltip": "Parameters used to have a source component but it is gone now.",
     "ParameterCompressor.cleanDangled": "Clear",
+    "AnimatorSimplePatcher:note": "Builds animator states and transitions at avatar build time, then removes this component from the built avatar.",
+    "AnimatorSimplePatcher.layer": "Animator Layer",
+    "AnimatorSimplePatcher.layer:tooltip": "The VRChat animator layer to patch. Available when the VRChat SDK for Avatars is installed.",
+    "AnimatorSimplePatcher.priority": "Layer Priority",
+    "AnimatorSimplePatcher.priority:tooltip": "Controls the order in which this patcher adds its animator layer.",
+    "AnimatorSimplePatcher.code": "Code",
+    "AnimatorSimplePatcher.code:tooltip": "Program compiled into animator states and transitions during the avatar build.",
+    "AnimatorSimplePatcher.extraReferences": "Extra References",
+    "AnimatorSimplePatcher.extraReferences:tooltip": "Named Unity object references used to resolve animation targets and object-reference values in the code.",
     "ParameterProvider": "This parameter is provided by {0} ({1})."
   },
   "zh-hant": {
@@ -232,6 +241,15 @@
     "ParameterCompressor.dangled": "懸空參數",
     "ParameterCompressor.dangled:tooltip": "曾經有來源元件但現在已消失的參數。",
     "ParameterCompressor.cleanDangled": "清理",
+    "AnimatorSimplePatcher:note": "此元件會在 Avatar 建置時建立動畫器狀態與轉場，並在建置完成後移除。",
+    "AnimatorSimplePatcher.layer": "動畫器圖層",
+    "AnimatorSimplePatcher.layer:tooltip": "要修改的 VRChat 動畫器圖層。僅在安裝 VRChat Avatars SDK 時提供。",
+    "AnimatorSimplePatcher.priority": "圖層優先順序",
+    "AnimatorSimplePatcher.priority:tooltip": "控制此元件新增動畫器圖層時的順序。",
+    "AnimatorSimplePatcher.code": "程式碼",
+    "AnimatorSimplePatcher.code:tooltip": "在 Avatar 建置時編譯為動畫器狀態與轉場的程式。",
+    "AnimatorSimplePatcher.extraReferences": "額外參照",
+    "AnimatorSimplePatcher.extraReferences:tooltip": "供程式解析動畫目標與物件參照值使用的命名 Unity 物件參照。",
     "ParameterProvider": "此參數由 {0} ({1}) 提供。"
   },
   "zh-hans": {
@@ -349,6 +367,15 @@
     "ParameterCompressor.dangled": "悬空参数",
     "ParameterCompressor.dangled:tooltip": "曾经有来源元件但现在已消失的参数。",
     "ParameterCompressor.cleanDangled": "清理",
+    "AnimatorSimplePatcher:note": "此组件会在 Avatar 构建时创建动画器状态与过渡，并在构建完成后移除。",
+    "AnimatorSimplePatcher.layer": "动画器图层",
+    "AnimatorSimplePatcher.layer:tooltip": "要修改的 VRChat 动画器图层。仅在安装 VRChat Avatars SDK 时提供。",
+    "AnimatorSimplePatcher.priority": "图层优先级",
+    "AnimatorSimplePatcher.priority:tooltip": "控制此组件添加动画器图层时的顺序。",
+    "AnimatorSimplePatcher.code": "代码",
+    "AnimatorSimplePatcher.code:tooltip": "在 Avatar 构建时编译为动画器状态与过渡的程序。",
+    "AnimatorSimplePatcher.extraReferences": "额外引用",
+    "AnimatorSimplePatcher.extraReferences:tooltip": "供程序解析动画目标与对象引用值使用的命名 Unity 对象引用。",
     "ParameterProvider": "此参数由 {0} ({1}) 提供。"
   },
   "ja": {
@@ -466,6 +493,15 @@
     "ParameterCompressor.dangled": "ぶら下がっているパラメーター",
     "ParameterCompressor.dangled:tooltip": "以前はソースコンポーネントがありましたが、現在は消失しているパラメーター。",
     "ParameterCompressor.cleanDangled": "クリーンアップ",
+    "AnimatorSimplePatcher:note": "このコンポーネントはアバターのビルド時にアニメーターのステートと遷移を生成し、ビルド後に削除されます。",
+    "AnimatorSimplePatcher.layer": "アニメーターレイヤー",
+    "AnimatorSimplePatcher.layer:tooltip": "変更する VRChat アニメーターレイヤーです。VRChat Avatars SDK がインストールされている場合に使用できます。",
+    "AnimatorSimplePatcher.priority": "レイヤーの優先度",
+    "AnimatorSimplePatcher.priority:tooltip": "このパッチャーがアニメーターレイヤーを追加する順序を制御します。",
+    "AnimatorSimplePatcher.code": "コード",
+    "AnimatorSimplePatcher.code:tooltip": "アバターのビルド時にアニメーターのステートと遷移へコンパイルされるプログラムです。",
+    "AnimatorSimplePatcher.extraReferences": "追加参照",
+    "AnimatorSimplePatcher.extraReferences:tooltip": "コード内のアニメーション対象とオブジェクト参照値を解決するための、名前付き Unity オブジェクト参照です。",
     "ParameterProvider": "このパラメーターは {0} ({1}) によって提供されます。"
   },
   "ko": {
@@ -583,6 +619,15 @@
     "ParameterCompressor.dangled": "매달린 파라미터",
     "ParameterCompressor.dangled:tooltip": "이전에 소스 구성 요소가 있었지만 현재는 사라진 매개변수입니다.",
     "ParameterCompressor.cleanDangled": "정리",
+    "AnimatorSimplePatcher:note": "이 구성 요소는 아바타 빌드 시 애니메이터 상태와 전환을 생성한 다음 빌드된 아바타에서 제거됩니다.",
+    "AnimatorSimplePatcher.layer": "애니메이터 레이어",
+    "AnimatorSimplePatcher.layer:tooltip": "수정할 VRChat 애니메이터 레이어입니다. VRChat Avatars SDK가 설치된 경우 사용할 수 있습니다.",
+    "AnimatorSimplePatcher.priority": "레이어 우선순위",
+    "AnimatorSimplePatcher.priority:tooltip": "이 패처가 애니메이터 레이어를 추가하는 순서를 제어합니다.",
+    "AnimatorSimplePatcher.code": "코드",
+    "AnimatorSimplePatcher.code:tooltip": "아바타 빌드 시 애니메이터 상태와 전환으로 컴파일되는 프로그램입니다.",
+    "AnimatorSimplePatcher.extraReferences": "추가 참조",
+    "AnimatorSimplePatcher.extraReferences:tooltip": "코드에서 애니메이션 대상과 오브젝트 참조 값을 확인하는 데 사용하는 이름이 지정된 Unity 오브젝트 참조입니다.",
     "ParameterProvider": "이 매개변수는 {0} ({1})에 의해 제공됩니다."
   }
 }

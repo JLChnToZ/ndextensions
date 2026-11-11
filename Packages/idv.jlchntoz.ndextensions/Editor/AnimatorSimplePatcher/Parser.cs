@@ -60,6 +60,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             if (IsName(token, "wait")) return ParseWait();
             if (IsName(token, "set")) return ParseSet();
             if (IsName(token, "goto")) return ParseGoto();
+            if (IsTreeStart()) return ParseTree();
             if (IsName(token, "exit")) {
                 position++;
                 MatchSymbol(";");
@@ -74,6 +75,81 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             }
 
             return ParseAnimation();
+        }
+
+        bool IsTreeStart() {
+            if (!IsName(Current, "tree")) return false;
+            if (position + 1 >= tokens.Count) return false;
+            if (IsName(tokens[position + 1], "direct")) return true;
+            if (!PeekSymbol(1, "(")) return false;
+            for (var i = position + 2; i < tokens.Count; i++)
+                if (tokens[i].type == StackParser.TokenType.Symbol && tokens[i].text == ")")
+                    return i + 1 >= tokens.Count || tokens[i + 1].type != StackParser.TokenType.Symbol || tokens[i + 1].text != ":";
+            return true;
+        }
+
+        TreeStatement ParseTree() {
+            var start = Current;
+            position++;
+            TreeKind kind;
+            string x = null, y = null;
+            bool normalized = false;
+            if (IsName(Current, "direct")) {
+                kind = TreeKind.Direct;
+                position++;
+                if (IsName(Current, "normalized")) {
+                    normalized = true;
+                    position++;
+                }
+            } else {
+                ExpectSymbol("(");
+                x = ParseName("Expected a blend parameter.").text;
+                if (MatchSymbol(",")) y = ParseName("Expected a second blend parameter.").text;
+                ExpectSymbol(")");
+                kind = y == null ? TreeKind.OneDimensional : TreeKind.FreeformDirectional;
+                if (IsName(Current, "simple") || IsName(Current, "cartesian")) {
+                    if (y == null) Error(Current, "A 2D blend mode requires two parameters.");
+                    kind = IsName(Current, "simple") ? TreeKind.SimpleDirectional : TreeKind.FreeformCartesian;
+                    position++;
+                }
+            }
+            var tree = new TreeStatement(start.row, start.col, kind, x, y, normalized);
+            ExpectSymbol("{");
+            while (!AtEnd && !IsSymbol("}")) {
+                string parameter = null;
+                float threshold = 0, coordinateY = 0;
+                if (kind == TreeKind.Direct) {
+                    parameter = ParseName("Expected a direct blend parameter.").text;
+                } else if (kind == TreeKind.OneDimensional) {
+                    threshold = ParseNumber(Expect(StackParser.TokenType.Number, "Expected a blend threshold."));
+                } else {
+                    ExpectSymbol("(");
+                    threshold = ParseNumber(Expect(StackParser.TokenType.Number, "Expected an X coordinate."));
+                    ExpectSymbol(",");
+                    coordinateY = ParseNumber(Expect(StackParser.TokenType.Number, "Expected a Y coordinate."));
+                    ExpectSymbol(")");
+                }
+                ExpectSymbol(":");
+                TreeStatement nested = null;
+                AnimationStatement[] animations = null;
+                if (IsTreeStart()) {
+                    nested = ParseTree();
+                } else {
+                    ExpectSymbol("{");
+                    var actions = new List<AnimationStatement>();
+                    while (!AtEnd && !IsSymbol("}")) {
+                        if (IsTreeStart() || IsName(Current, "set") || IsName(Current, "if") ||
+                            IsName(Current, "wait") || IsName(Current, "goto") || IsName(Current, "exit"))
+                            Error(Current, "A blend-tree animation body may contain only animation actions.");
+                        actions.Add((AnimationStatement)ParseAnimation());
+                    }
+                    ExpectSymbol("}");
+                    animations = actions.ToArray();
+                }
+                tree.children.Add(new TreeChild(parameter, threshold, coordinateY, nested, animations));
+            }
+            ExpectSymbol("}");
+            return tree;
         }
 
         Statement ParseIf() {
@@ -183,7 +259,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             } else {
                 Error(Current, "Expected a numeric value or object reference after '->'.");
             }
-            var easing = EasingFactory.EasingType.Linear;
+            EasingFactory.EasingType? easing = null;
             var easingDuration = 0f;
             if (referenceName == null && Current.type == StackParser.TokenType.Identifier) {
                 var easingToken = Current;
@@ -221,6 +297,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 Current.type == StackParser.TokenType.DoubleQuotedString ||
                 Current.type == StackParser.TokenType.Identifier) {
                 var value = Current.text;
+                position++;
                 if (MatchSymbol("(")) {
                     var x = ParseNumber(Expect(StackParser.TokenType.Number, "Expected a number for remap x."));
                     ExpectSymbol(",");

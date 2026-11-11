@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using UnityObject = UnityEngine.Object;
+
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("NDExtensions.Editor.Tests")]
 
 namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
     abstract class ActionStatement : Statement {
@@ -12,14 +15,14 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         public readonly string property;
         public readonly float value;
         public readonly string refName;
-        public readonly EasingFactory.EasingType easing;
+        public readonly EasingFactory.EasingType? easing;
         public readonly float easingDuration;
         public string resolvedPath;
         public UnityObject resolvedRef;
 
         public AnimationStatement(
             int row, int col, string target, Type type, string property, float value, string refName,
-            EasingFactory.EasingType easing, float easingDuration
+            EasingFactory.EasingType? easing, float easingDuration
         ) : base(row, col) {
             this.target = target;
             this.type = type;
@@ -31,6 +34,28 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         }
 
         public bool IsPointerCurve => refName != null;
+    }
+
+    sealed class TreeStatement : ActionStatement {
+        public readonly TreeKind kind;
+        public readonly string parameterX, parameterY;
+        public readonly bool normalized;
+        public readonly List<TreeChild> children = new();
+
+        public TreeStatement(int row, int col, TreeKind kind, string parameterX = null, string parameterY = null, bool normalized = false) : base(row, col) {
+            this.kind = kind;
+            this.parameterX = parameterX;
+            this.parameterY = parameterY;
+            this.normalized = normalized;
+        }
+    }
+
+    enum TreeKind : byte {
+        Direct,
+        OneDimensional,
+        SimpleDirectional,
+        FreeformDirectional,
+        FreeformCartesian,
     }
 
     sealed class SetStatement : ActionStatement {

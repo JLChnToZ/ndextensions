@@ -11,6 +11,7 @@ using UnityObject = UnityEngine.Object;
 namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
     sealed class CompileContext : IDisposable {
         readonly VirtualAnimatorController controller;
+        readonly AAPContext aap;
         readonly IReadOnlyDictionary<string, UnityObject> references;
         readonly ObjectPathRemapper pathRemapper;
         readonly DummyClips dummyClips;
@@ -43,25 +44,20 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         static void Throw(Statement statement, string message) => throw new ParseException(statement.row, statement.col, message);
 
         static void Split(Block block, List<ISegment> segments, List<ActionStatement> actions) {
-            void Flush(float? wait = null) {
-                if (actions.Count > 0 || wait.HasValue) segments.Add(new ActionSegment(actions.ToArray(), wait));
-                actions.Clear();
-            }
-
             foreach (var statement in block.statements) {
                 switch (statement) {
                     case ActionStatement action:
                         actions.Add(action);
                         break;
                     case WaitStatement wait:
-                        Flush(wait.duration);
+                        Flush(segments, actions, wait.duration);
                         break;
                     case IfStatement conditional:
-                        Flush();
+                        Flush(segments, actions);
                         segments.Add(new IfSegment(conditional));
                         break;
                     case LabelStatement label:
-                        Flush();
+                        Flush(segments, actions);
                         segments.Add(new LabelSegment(label));
                         break;
                     case GotoStatement jump:
@@ -74,7 +70,12 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                         break;
                 }
             }
-            Flush();
+            Flush(segments, actions);
+        }
+
+        static void Flush(List<ISegment> segments, List<ActionStatement> actions, float? wait = null) {
+            if (actions.Count > 0 || wait.HasValue) segments.Add(new ActionSegment(actions.ToArray(), wait));
+            actions.Clear();
         }
 
         static VirtualStateTransition AddTransition(VirtualState from, VirtualState to, float? exitTime, bool isExit) {
@@ -105,15 +106,59 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             threshold = threshold,
         };
 
+        static bool ContainsFlow(Block block) {
+            foreach (var statement in block.statements)
+                if (!(statement is ActionStatement)) return true;
+            return false;
+        }
+
+        static void ValidateTreeSegments(Block block) {
+            TreeStatement tree = null;
+            int motions = 0;
+            bool hasAnimation = false;
+            foreach (var statement in block.statements) {
+                switch (statement) {
+                    case TreeStatement blendTree:
+                        tree ??= blendTree;
+                        motions++;
+                        break;
+                    case AnimationStatement _:
+                        if (!hasAnimation) motions++;
+                        hasAnimation = true;
+                        break;
+                    case ActionStatement _:
+                        break;
+                    default:
+                        CheckTreeSegment(ref tree, ref motions);
+                        hasAnimation = false;
+                        if (statement is IfStatement conditional) {
+                            ValidateTreeSegments(conditional.thenBlock);
+                            if (conditional.elseBlock != null) ValidateTreeSegments(conditional.elseBlock);
+                        }
+                        break;
+                }
+            }
+            CheckTreeSegment(ref tree, ref motions);
+        }
+
+        static void CheckTreeSegment(ref TreeStatement tree, ref int motions) {
+            if (tree != null && motions > 1)
+                Throw(tree, "A segment in a program with flow control cannot combine a blend tree with other motions.");
+            tree = null;
+            motions = 0;
+        }
+
         public CompileContext(
             VirtualAnimatorController controller,
             IReadOnlyDictionary<string, UnityObject> references,
             ObjectPathRemapper pathRemapper,
             DummyClips dummyClips,
             Transform fallbackRoot,
-            bool writeDefaults
+            bool writeDefaults,
+            AAPContext aap
         ) {
             this.controller = controller;
+            this.aap = aap;
             this.references = references;
             this.pathRemapper = pathRemapper;
             this.dummyClips = dummyClips;
@@ -136,13 +181,19 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             CollectParameterTypes(program.root);
             ValidateParameterTypes();
             ResolveAnimationTargets(program.root);
+            if (ContainsFlow(program.root)) ValidateTreeSegments(program.root);
 #if !VRC_SDK_VRCSDK3
             if (ContainsSet(program.Root))
                 throw new NotSupportedException("Parameter-driver instructions require the VRChat SDK3 avatar package.");
 #endif
         }
 
-        public void Compile(Program program, VirtualLayer layer) {
+        public void Compile(Program program, int priority, string layerName) {
+            if (program.root.statements.Count == 1 && program.root.statements[0] is TreeStatement tree) {
+                RegisterParameters();
+                aap.RootBlendTree.AddMotion(aap.GetTempParameter(1), BuildTree(tree, 0, out _));
+                return;
+            }
             var terminal = AddNode(new FlowNode());
             var entry = BuildBlock(program.root, terminal);
             foreach (var (node, label, row, col) in gotos) {
@@ -156,6 +207,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             var entryNode = ResolveNode(entry);
 
             RegisterParameters();
+            var layer = controller.AddLayer(new LayerPriority(priority), layerName);
             var machine = layer.StateMachine;
             int index = 0;
             foreach (var node in nodes) {
@@ -435,22 +487,77 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
 
         VirtualMotion BuildMotion(FlowNode node) {
             bool hasAnimationActions = false;
+            int treeCount = 0;
             if (node.actions != null)
                 foreach (var action in node.actions)
                     if (action is AnimationStatement) {
                         hasAnimationActions = true;
-                        break;
-                    }
+                    } else if (action is TreeStatement) treeCount++;
             var waitDuration = node.exitDuration ?? 0;
-            if (!hasAnimationActions) return dummyClips.Get(Mathf.Max(waitDuration, 0));
+            if (treeCount == 0) {
+                if (!hasAnimationActions) return dummyClips.Get(Mathf.Max(waitDuration, 0));
+                return BuildClip(node.actions, waitDuration, $"Instruction {node.row}/{node.col}", out node.motionDuration);
+            }
 
-            var clip = VirtualClip.Create($"Instruction {node.row}/{node.col}");
+            var compose = treeCount + (hasAnimationActions ? 1 : 0) > 1;
+            var wrapper = compose ? VirtualBlendTree.Create("Combined motions").SetDirect() : null;
+            VirtualMotion motion = null;
+            float duration = 0;
+            if (hasAnimationActions) {
+                motion = BuildClip(node.actions, waitDuration, $"Instruction {node.row}/{node.col}", out var clipDuration);
+                duration = Mathf.Max(duration, clipDuration);
+                wrapper.AddMotion(aap.GetTempParameter(1), motion);
+            }
+            foreach (var action in node.actions) {
+                if (!(action is TreeStatement tree)) continue;
+                motion = BuildTree(tree, waitDuration, out var childDuration);
+                duration = Mathf.Max(duration, childDuration);
+                if (compose) wrapper.AddMotion(aap.GetTempParameter(1), motion);
+            }
+            node.motionDuration = duration;
+            return compose ? wrapper : motion;
+        }
+
+        VirtualMotion BuildTree(TreeStatement statement, float waitDuration, out float duration) {
+            var tree = VirtualBlendTree.Create($"Tree {statement.row}/{statement.col}");
+            switch (statement.kind) {
+                case TreeKind.Direct: tree.SetDirect(statement.normalized); break;
+                case TreeKind.OneDimensional: tree.Set1D(statement.parameterX); break;
+                case TreeKind.SimpleDirectional: tree.Set2D(statement.parameterX, statement.parameterY); break;
+                case TreeKind.FreeformDirectional: tree.Set2DFreeform(statement.parameterX, statement.parameterY); break;
+                case TreeKind.FreeformCartesian: tree.Set2DCartesian(statement.parameterX, statement.parameterY); break;
+                default: throw new InvalidOperationException("Unknown blend-tree type.");
+            }
+            duration = 0;
+            foreach (var child in statement.children) {
+                VirtualMotion motion;
+                float childDuration;
+                if (child.tree != null) {
+                    motion = BuildTree(child.tree, waitDuration, out childDuration);
+                } else if (child.animations.Length == 0) {
+                    childDuration = Mathf.Max(waitDuration, 1f / 60f);
+                    motion = dummyClips.Get(childDuration);
+                } else {
+                    motion = BuildClip(child.animations, waitDuration, $"Tree child {statement.row}/{statement.col}", out childDuration);
+                }
+                duration = Mathf.Max(duration, childDuration);
+                switch (statement.kind) {
+                    case TreeKind.Direct: tree.AddMotion(child.parameter, motion); break;
+                    case TreeKind.OneDimensional: tree.AddMotion(child.x, motion); break;
+                    default: tree.AddMotion(child.x, child.y, motion); break;
+                }
+            }
+            return tree;
+        }
+
+        VirtualClip BuildClip(IEnumerable<ActionStatement> actions, float waitDuration, string name, out float motionDuration) {
+            var clip = VirtualClip.Create(name);
             clip.FrameRate = 60;
             using (DictionaryPool<EditorCurveBinding, CurveTrack>.Get(out var tracks))
             using (DictionaryPool<EditorCurveBinding, PointerCurveTrack>.Get(out var pointerTracks)) {
                 float duration = waitDuration;
-                if (node.actions != null)
-                    foreach (var actionStatement in node.actions) {
+                if (actions != null)
+                    foreach (var actionStatement in actions) {
                         if (!(actionStatement is AnimationStatement action)) continue;
                         if (action.IsPointerCurve) {
                             var binding = EditorCurveBinding.PPtrCurve(action.resolvedPath, action.type, action.property);
@@ -473,7 +580,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                             var from = track.HasValue ? track.LastValue : action.value;
                             var start = track.HasValue ? track.LastTime : 0;
                             var end = start + action.easingDuration;
-                            var curve = EasingFactory.Create(action.easing, from, action.value, start, end);
+                            var curve = EasingFactory.Create(action.easing.Value, from, action.value, start, end);
                             track.Set(curve[0]);
                             track.Set(curve[1]);
                             track.LastValue = action.value;
@@ -482,7 +589,14 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                             duration = Mathf.Max(duration, end);
                         } else {
                             var time = track.HasValue ? track.LastTime : 0;
-                            track.Set(new Keyframe(time, action.value));
+                            if (action.easing == null) {
+                                var key = track.TryGet(time, out var existing) ? existing : new Keyframe(time, action.value);
+                                key.value = action.value;
+                                key.outTangent = float.PositiveInfinity;
+                                track.Set(key);
+                            } else {
+                                track.Set(new Keyframe(time, action.value));
+                            }
                             track.LastValue = action.value;
                             track.LastTime = time;
                             track.HasValue = true;
@@ -491,7 +605,8 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
 
                 if (duration <= 0) duration = 1f / clip.FrameRate;
                 foreach (var (binding, track) in tracks) {
-                    track.Set(new Keyframe(duration, track.LastValue));
+                    if (duration > track.LastTime)
+                        track.Set(new Keyframe(duration, track.LastValue));
                     clip.SetFloatCurve(binding, new AnimationCurve(track.CopyKeys()));
                 }
                 foreach (var (binding, track) in pointerTracks) {
@@ -501,7 +616,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 var settings = clip.Settings;
                 settings.stopTime = duration;
                 clip.Settings = settings;
-                node.motionDuration = duration;
+                motionDuration = duration;
                 return clip;
             }
         }
@@ -587,7 +702,19 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                         CollectParameterTypes(conditional.thenBlock);
                         if (conditional.elseBlock != null) CollectParameterTypes(conditional.elseBlock);
                         break;
+                    case TreeStatement tree:
+                        CollectTreeParameterTypes(tree);
+                        break;
                 }
+            }
+        }
+
+        void CollectTreeParameterTypes(TreeStatement tree) {
+            if (tree.parameterX != null) AddParameterType(tree.parameterX, AnimatorControllerParameterType.Float, tree);
+            if (tree.parameterY != null) AddParameterType(tree.parameterY, AnimatorControllerParameterType.Float, tree);
+            foreach (var child in tree.children) {
+                if (child.parameter != null) AddParameterType(child.parameter, AnimatorControllerParameterType.Float, tree);
+                if (child.tree != null) CollectTreeParameterTypes(child.tree);
             }
         }
 
@@ -657,25 +784,38 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             foreach (var statement in block.statements)
                 switch (statement) {
                     case AnimationStatement animation:
-                        var transform = TryResolveTarget(animation.target, out var target);
-                        if (transform == null)
-                            throw new ParseException(animation.row, animation.col, $"Could not map transform '{animation.target}' to an animation path.");
-                        if (animation.type == typeof(Animator) && transform == fallbackRoot)
-                            animation.resolvedPath = ""; // Self modifying animator
-                        else
-                            animation.resolvedPath = pathRemapper.GetVirtualPathForObject(transform);
-                        if (animation.type == null) animation.type = target.GetType();
-                        if (animation.IsPointerCurve) {
-                            if (references == null || !references.TryGetValue(animation.refName, out var reference) || reference == null)
-                                throw new ParseException(animation.row, animation.col, $"Could not resolve reference '{animation.refName}'.");
-                            animation.resolvedRef = reference;
-                        }
+                        ResolveAnimationTarget(animation);
+                        break;
+                    case TreeStatement tree:
+                        ResolveTreeTargets(tree);
                         break;
                     case IfStatement conditional:
                         ResolveAnimationTargets(conditional.thenBlock);
                         if (conditional.elseBlock != null) ResolveAnimationTargets(conditional.elseBlock);
                         break;
                 }
+        }
+
+        void ResolveTreeTargets(TreeStatement tree) {
+            foreach (var child in tree.children)
+                if (child.tree != null) ResolveTreeTargets(child.tree);
+                else foreach (var animation in child.animations) ResolveAnimationTarget(animation);
+        }
+
+        void ResolveAnimationTarget(AnimationStatement animation) {
+            var transform = TryResolveTarget(animation.target, out var target);
+            if (transform == null)
+                throw new ParseException(animation.row, animation.col, $"Could not map transform '{animation.target}' to an animation path.");
+            if (animation.type == typeof(Animator) && transform == fallbackRoot)
+                animation.resolvedPath = "";
+            else
+                animation.resolvedPath = pathRemapper.GetVirtualPathForObject(transform);
+            if (animation.type == null) animation.type = target.GetType();
+            if (animation.IsPointerCurve) {
+                if (references == null || !references.TryGetValue(animation.refName, out var reference) || reference == null)
+                    throw new ParseException(animation.row, animation.col, $"Could not resolve reference '{animation.refName}'.");
+                animation.resolvedRef = reference;
+            }
         }
 
         sealed class CurveTrack {
@@ -685,6 +825,8 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             public float LastTime;
 
             public void Set(Keyframe key) => keys[key.time] = key;
+
+            public bool TryGet(float time, out Keyframe key) => keys.TryGetValue(time, out key);
 
             public Keyframe[] CopyKeys() {
                 var result = new Keyframe[keys.Count];

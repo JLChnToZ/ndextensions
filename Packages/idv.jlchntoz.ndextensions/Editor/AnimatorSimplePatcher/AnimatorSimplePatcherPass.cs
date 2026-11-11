@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Pool;
 using UnityEditor;
@@ -11,6 +13,89 @@ using JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter;
 using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors {
+    [ParameterProviderFor(typeof(AnimatorSimplePatcher))]
+    internal class AnimatorSimplePatcherProvider : IParameterProvider {
+        readonly AnimatorSimplePatcher patcher;
+
+        public AnimatorSimplePatcherProvider(AnimatorSimplePatcher patcher) => this.patcher = patcher;
+
+        public IEnumerable<ProvidedParameter> GetSuppliedParameters(BuildContext context = null) {
+            if (string.IsNullOrEmpty(patcher.code)) yield break;
+
+            using var parser = new Parser(patcher.code);
+            using var program = parser.Parse();
+            var parameters = new Dictionary<string, AnimatorControllerParameterType?>();
+            CollectBlock(program.root, parameters);
+            foreach (var (name, type) in parameters)
+                yield return new ProvidedParameter(name, ParameterNamespace.Animator, patcher, NDExtensionPlugin.Instance, type) {
+                    IsAnimatorOnly = true,
+                };
+        }
+
+        static void AddParameter(Dictionary<string, AnimatorControllerParameterType?> parameters, string name, AnimatorControllerParameterType? type) {
+            if (string.IsNullOrEmpty(name)) return;
+            if (!parameters.TryGetValue(name, out var existing) || existing == null) {
+                parameters[name] = type;
+            } else if (type != null && existing != type) {
+                if (existing == AnimatorControllerParameterType.Bool || type == AnimatorControllerParameterType.Bool)
+                    throw new InvalidOperationException($"Parameter '{name}' is used with incompatible types.");
+                parameters[name] = AnimatorControllerParameterType.Float;
+            }
+        }
+
+        static AnimatorControllerParameterType GetValueType(AnimatorSimplePatcherConverter.Value value) => value.type switch {
+            AnimatorSimplePatcherConverter.ValueType.Boolean => AnimatorControllerParameterType.Bool,
+            AnimatorSimplePatcherConverter.ValueType.Integer => AnimatorControllerParameterType.Int,
+            _ => AnimatorControllerParameterType.Float,
+        };
+
+        static void CollectBlock(Block block, Dictionary<string, AnimatorControllerParameterType?> parameters) {
+            foreach (var statement in block.statements)
+                switch (statement) {
+                    case SetStatement set:
+                        AddParameter(parameters, set.parameter, GetValueType(set.value));
+                        if (set.value.type == AnimatorSimplePatcherConverter.ValueType.Copy)
+                            AddParameter(parameters, set.value.source, null);
+                        break;
+                    case IfStatement conditional:
+                        CollectExpression(conditional.condition, parameters);
+                        CollectBlock(conditional.thenBlock, parameters);
+                        if (conditional.elseBlock != null) CollectBlock(conditional.elseBlock, parameters);
+                        break;
+                    case TreeStatement tree:
+                        CollectTree(tree, parameters);
+                        break;
+                }
+        }
+
+        static void CollectExpression(Expression expression, Dictionary<string, AnimatorControllerParameterType?> parameters) {
+            switch (expression) {
+                case BooleanParameterExpression parameter:
+                    AddParameter(parameters, parameter.parameter, null);
+                    break;
+                case ComparisonExpression comparison:
+                    AddParameter(parameters, comparison.parameter, GetValueType(comparison.value));
+                    break;
+                case NotExpression not:
+                    CollectExpression(not.operand, parameters);
+                    break;
+                case BinaryExpression binary:
+                    CollectExpression(binary.left, parameters);
+                    CollectExpression(binary.right, parameters);
+                    break;
+            }
+        }
+
+        static void CollectTree(TreeStatement tree, Dictionary<string, AnimatorControllerParameterType?> parameters) {
+            AddParameter(parameters, tree.parameterX, AnimatorControllerParameterType.Float);
+            AddParameter(parameters, tree.parameterY, AnimatorControllerParameterType.Float);
+            foreach (var child in tree.children) {
+                AddParameter(parameters, child.parameter, AnimatorControllerParameterType.Float);
+                if (child.tree != null) CollectTree(child.tree, parameters);
+            }
+        }
+    }
+
     [CustomEditor(typeof(AnimatorSimplePatcher))]
     public class AnimatorSimplePatcherEditor : TagComponentEditor {
         static GUIStyle multilineTextField;
@@ -111,9 +196,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                             }
                         using var parser = new Parser(patcher.code);
                         using var program = parser.Parse();
-                        using var ctx = new CompileContext(ac, refs, asc.ObjectPathRemapper, dummyClips, patcher.transform, writeDefaults);
+                        var aap = AAPContext.ForController(context, ac);
+                        using var ctx = new CompileContext(ac, refs, asc.ObjectPathRemapper, dummyClips, patcher.transform, writeDefaults, aap);
                         ctx.Validate(program);
-                        ctx.Compile(program, ac.AddLayer(new LayerPriority(patcher.priority), patcher.name));
+                        ctx.Compile(program, patcher.priority, patcher.name);
                     }
                     UnityObject.DestroyImmediate(patcher);
                 }

@@ -8,16 +8,18 @@ namespace JLChnToZ.NDExtensions.Editors {
     class NDMFWarn : SimpleError {
         public override Localizer Localizer => null;
         public override string TitleKey => title;
-        public override ErrorSeverity Severity => ErrorSeverity.NonFatal;
+        public override ErrorSeverity Severity => severity;
         private readonly string title;
+        private readonly ErrorSeverity severity;
         public string[] titleSubSt, detailsSubSt, hintSubSt;
 
         public override string[] TitleSubst => titleSubSt ?? Array.Empty<string>();
         public override string[] DetailsSubst => detailsSubSt ?? Array.Empty<string>();
         public override string[] HintSubst => hintSubSt ?? Array.Empty<string>();
 
-        public NDMFWarn(string title) {
+        public NDMFWarn(string title, ErrorSeverity severity = ErrorSeverity.NonFatal) {
             this.title = title;
+            this.severity = severity;
         }
 
         public override string FormatTitle() => SafeSubst(I18N.Instance[TitleKey] ?? TitleKey, TitleSubst);

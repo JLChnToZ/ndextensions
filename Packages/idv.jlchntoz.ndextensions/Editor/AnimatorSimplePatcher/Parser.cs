@@ -45,6 +45,18 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             return new Program(root, blocks);
         }
 
+        public bool TryParse(out Program program, out Exception exception) {
+            try {
+                program = Parse();
+                exception = null;
+                return true;
+            } catch (Exception e) {
+                program = null;
+                exception = e;
+                return false;
+            }
+        }
+
         Block ParseBlock(bool isBraced) {
             var block = new Block();
             blocks.Add(block);

@@ -23,7 +23,9 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (string.IsNullOrEmpty(patcher.code)) yield break;
 
             using var parser = new Parser(patcher.code);
-            using var program = parser.Parse();
+            if (!parser.TryParse(out var program, out var exception))
+                yield break;
+            using var _ = program;
             var parameters = new Dictionary<string, AnimatorControllerParameterType?>();
             CollectBlock(program.root, parameters);
             foreach (var (name, type) in parameters)
@@ -43,7 +45,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             }
         }
 
-        static AnimatorControllerParameterType GetValueType(AnimatorSimplePatcherConverter.Value value) => value.type switch {
+        static AnimatorControllerParameterType GetValueType(Value value) => value.type switch {
             AnimatorSimplePatcherConverter.ValueType.Boolean => AnimatorControllerParameterType.Bool,
             AnimatorSimplePatcherConverter.ValueType.Integer => AnimatorControllerParameterType.Int,
             _ => AnimatorControllerParameterType.Float,
@@ -174,34 +176,40 @@ namespace JLChnToZ.NDExtensions.Editors {
                 using (DictionaryPool<VRCAvatarDescriptor.AnimLayerType, bool>.Get(out var wds))
 #endif
                 foreach (var patcher in patchers) {
+                    try {
 #if VRC_SDK_VRCSDK3
-                    if (!controllers.TryGetValue(patcher.layer, out var ac)) {
-                        Debug.LogWarning($"Controller for layer {patcher.layer} not found.");
-                        UnityObject.DestroyImmediate(patcher);
-                        continue;
-                    }
-                    if (!wds.TryGetValue(patcher.layer, out var writeDefaults))
-                        writeDefaults = ac.DetermineWriteDefaults();
-                    wds[patcher.layer] = writeDefaults;
+                        if (!controllers.TryGetValue(patcher.layer, out var ac)) {
+                            Debug.LogWarning($"Controller for layer {patcher.layer} not found.");
+                            UnityObject.DestroyImmediate(patcher);
+                            continue;
+                        }
+                        if (!wds.TryGetValue(patcher.layer, out var writeDefaults))
+                            writeDefaults = ac.DetermineWriteDefaults();
+                        wds[patcher.layer] = writeDefaults;
 #endif
-                    using (DictionaryPool<string, UnityObject>.Get(out var refs)) {
-                        if (patcher.extraReferences != null)
-                            foreach (var reference in patcher.extraReferences) {
-                                var refName = reference.name;
-                                if (string.IsNullOrEmpty(refName)) {
-                                    if (reference.reference == null) continue;
-                                    refName = reference.reference.name;
+                        using (DictionaryPool<string, UnityObject>.Get(out var refs)) {
+                            if (patcher.extraReferences != null)
+                                foreach (var reference in patcher.extraReferences) {
+                                    var refName = reference.name;
+                                    if (string.IsNullOrEmpty(refName)) {
+                                        if (reference.reference == null) continue;
+                                        refName = reference.reference.name;
+                                    }
+                                    refs.TryAdd(refName, reference.reference);
                                 }
-                                refs.TryAdd(refName, reference.reference);
-                            }
-                        using var parser = new Parser(patcher.code);
-                        using var program = parser.Parse();
-                        var aap = AAPContext.ForController(context, ac);
-                        using var ctx = new CompileContext(ac, refs, asc.ObjectPathRemapper, dummyClips, patcher.transform, writeDefaults, aap);
-                        ctx.Validate(program);
-                        ctx.Compile(program, patcher.priority, patcher.name);
+                            using var parser = new Parser(patcher.code);
+                            using var program = parser.Parse();
+                            var aap = AAPContext.ForController(context, ac);
+                            using var ctx = new CompileContext(ac, refs, asc.ObjectPathRemapper, dummyClips, patcher.transform, writeDefaults, aap);
+                            ctx.Validate(program);
+                            ctx.Compile(program, patcher.priority, patcher.name);
+                        }
+                    } catch (Exception e) {
+                        ErrorReport.ReportError(new NDMFWarn(e.Message, ErrorSeverity.Error));
+                        Debug.LogException(e);
+                    } finally {
+                        UnityObject.DestroyImmediate(patcher);
                     }
-                    UnityObject.DestroyImmediate(patcher);
                 }
             }
         }

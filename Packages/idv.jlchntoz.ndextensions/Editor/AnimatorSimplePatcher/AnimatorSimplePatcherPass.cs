@@ -24,7 +24,7 @@ namespace JLChnToZ.NDExtensions.Editors {
 
             using var parser = new Parser(patcher.code);
             if (!parser.TryParse(out var program, out var exception))
-                yield break;
+                throw exception;
             using var _ = program;
             var parameters = new Dictionary<string, AnimatorControllerParameterType?>();
             CollectBlock(program.root, parameters);
@@ -38,11 +38,8 @@ namespace JLChnToZ.NDExtensions.Editors {
             if (string.IsNullOrEmpty(name)) return;
             if (!parameters.TryGetValue(name, out var existing) || existing == null) {
                 parameters[name] = type;
-            } else if (type != null && existing != type) {
-                if (existing == AnimatorControllerParameterType.Bool || type == AnimatorControllerParameterType.Bool)
-                    throw new InvalidOperationException($"Parameter '{name}' is used with incompatible types.");
-                parameters[name] = AnimatorControllerParameterType.Float;
-            }
+            } else if (type != null)
+                parameters[name] = ParameterTypeFallback.Merge(existing.Value, type.Value);
         }
 
         static AnimatorControllerParameterType GetValueType(Value value) => value.type switch {

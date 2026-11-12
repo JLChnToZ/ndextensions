@@ -39,8 +39,6 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             return false;
         }
 
-        static bool IsNumeric(AnimatorControllerParameterType type) => type == AnimatorControllerParameterType.Int || type == AnimatorControllerParameterType.Float;
-
         static void Throw(Statement statement, string message) => throw new ParseException(statement.row, statement.col, message);
 
         static void Split(Block block, List<ISegment> segments, List<ActionStatement> actions) {
@@ -94,6 +92,8 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 var copy = destination.Add();
                 copy.AddRange(clause);
                 if (copy.Count > 64)
+                    Throw(statement, "Condition expands to too many conditions in one alternative.");
+                if (destination.Count > 64)
                     Throw(statement, "Condition expands to too many transition alternatives.");
             }
         }
@@ -183,7 +183,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             ResolveAnimationTargets(program.root);
             if (ContainsFlow(program.root)) ValidateTreeSegments(program.root);
 #if !VRC_SDK_VRCSDK3
-            if (ContainsSet(program.Root))
+            if (ContainsSet(program.root))
                 throw new NotSupportedException("Parameter-driver instructions require the VRChat SDK3 avatar package.");
 #endif
         }
@@ -426,6 +426,8 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                                 var combined = result.Add();
                                 combined.AddRange(leftClause);
                                 combined.AddRange(rightClause);
+                                if (combined.Count > 64)
+                                    Throw(binary, "Condition expands to too many conditions in one alternative.");
                                 if (clauses.Count > 64)
                                     Throw(binary, "Condition expands to too many transition alternatives.");
                             }
@@ -454,25 +456,28 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 _ => op,
             };
             if (comparison.value.type == ValueType.Boolean) {
-                if (type != AnimatorControllerParameterType.Bool)
-                    Throw(comparison, "Boolean comparisons require a boolean parameter.");
-                var isTrue = comparison.value.value != 0;
-                var positive = op == "==" ? isTrue : !isTrue;
                 if (op != "==" && op != "!=") Throw(comparison, "Boolean parameters only support == and !=.");
-                AddClause(clauses, new AnimatorCondition {
-                    mode = positive ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot,
-                    parameter = comparison.parameter,
-                });
+                if (type == AnimatorControllerParameterType.Bool) {
+                    var isTrue = comparison.value.value != 0;
+                    var positive = op == "==" ? isTrue : !isTrue;
+                    AddClause(clauses, new AnimatorCondition {
+                        mode = positive ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot,
+                        parameter = comparison.parameter,
+                    });
+                } else {
+                    var booleanMode = op == "==" ? AnimatorConditionMode.Equals : AnimatorConditionMode.NotEqual;
+                    AddClause(clauses, MakeCondition(booleanMode, comparison.parameter, comparison.value.value));
+                }
                 return;
             }
             if (type == AnimatorControllerParameterType.Bool)
                 Throw(comparison, "Numeric comparisons require an integer or float parameter.");
             var threshold = comparison.value.value;
             if (op == "<=") {
-                threshold += comparison.value.type == ValueType.Integer ? 1 : 0.0001F;
+                threshold += type == AnimatorControllerParameterType.Int && comparison.value.type == ValueType.Integer ? 1 : 0.0001F;
                 op = "<";
             } else if (op == ">=") {
-                threshold -= comparison.value.type == ValueType.Integer ? 1 : 0.0001F;
+                threshold -= type == AnimatorControllerParameterType.Int && comparison.value.type == ValueType.Integer ? 1 : 0.0001F;
                 op = ">";
             }
             var mode = op switch {
@@ -542,7 +547,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 }
                 duration = Mathf.Max(duration, childDuration);
                 switch (statement.kind) {
-                    case TreeKind.Direct: tree.AddMotion(child.parameter, motion); break;
+                    case TreeKind.Direct: tree.AddMotion(child.parameter ?? aap.GetTempParameter(child.x), motion); break;
                     case TreeKind.OneDimensional: tree.AddMotion(child.x, motion); break;
                     default: tree.AddMotion(child.x, child.y, motion); break;
                 }
@@ -565,9 +570,20 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                                 pointerTrack = new PointerCurveTrack();
                                 pointerTracks.Add(binding, pointerTrack);
                             }
-                            pointerTrack.LastValue = action.resolvedRef;
-                            pointerTrack.Set(new ObjectReferenceKeyframe { time = pointerTrack.LastTime, value = pointerTrack.LastValue });
-                            pointerTrack.HasValue = true;
+                            var first = action.keyframes[0];
+                            var time = first.hasTime ? first.time : 0;
+                            pointerTrack.Set(new ObjectReferenceKeyframe { time = time, value = first.resolvedRef });
+                            pointerTrack.LastValue = first.resolvedRef;
+                            pointerTrack.LastTime = time;
+                            duration = Mathf.Max(duration, time);
+                            for (var i = 1; i < action.keyframes.Length; i++) {
+                                var key = action.keyframes[i];
+                                time = key.absoluteTime ? key.time : time + key.time;
+                                pointerTrack.Set(new ObjectReferenceKeyframe { time = time, value = key.resolvedRef });
+                                pointerTrack.LastValue = key.resolvedRef;
+                                pointerTrack.LastTime = time;
+                                duration = Mathf.Max(duration, time);
+                            }
                             continue;
                         }
 
@@ -576,31 +592,30 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                             track = new CurveTrack();
                             tracks.Add(floatBinding, track);
                         }
-                        if (action.easingDuration > 0) {
-                            var from = track.HasValue ? track.LastValue : action.value;
-                            var start = track.HasValue ? track.LastTime : 0;
-                            var end = start + action.easingDuration;
-                            var curve = EasingFactory.Create(action.easing.Value, from, action.value, start, end);
-                            track.Set(curve[0]);
-                            track.Set(curve[1]);
-                            track.LastValue = action.value;
-                            track.LastTime = end;
-                            track.HasValue = true;
-                            duration = Mathf.Max(duration, end);
-                        } else {
-                            var time = track.HasValue ? track.LastTime : 0;
-                            if (action.easing == null) {
-                                var key = track.TryGet(time, out var existing) ? existing : new Keyframe(time, action.value);
-                                key.value = action.value;
-                                key.outTangent = float.PositiveInfinity;
-                                track.Set(key);
+                        var firstKey = action.keyframes[0];
+                        var keyTime = firstKey.hasTime ? firstKey.time : 0;
+                        var value = firstKey.value;
+                        track.Set(new Keyframe(keyTime, value) { outTangent = float.PositiveInfinity });
+                        duration = Mathf.Max(duration, keyTime);
+                        for (var i = 1; i < action.keyframes.Length; i++) {
+                            var key = action.keyframes[i];
+                            var end = key.absoluteTime ? key.time : keyTime + key.time;
+                            if (key.easing.HasValue) {
+                                var curve = EasingFactory.Create(key.easing.Value, value, key.value, keyTime, end);
+                                track.Set(curve[0]);
+                                track.Set(curve[1]);
                             } else {
-                                track.Set(new Keyframe(time, action.value));
+                                var startKey = track.TryGet(keyTime, out var existing) ? existing : new Keyframe(keyTime, value);
+                                startKey.outTangent = float.PositiveInfinity;
+                                track.Set(startKey);
+                                track.Set(new Keyframe(end, key.value) { outTangent = float.PositiveInfinity });
                             }
-                            track.LastValue = action.value;
-                            track.LastTime = time;
-                            track.HasValue = true;
+                            keyTime = end;
+                            value = key.value;
+                            duration = Mathf.Max(duration, end);
                         }
+                        track.LastValue = value;
+                        track.LastTime = keyTime;
                     }
 
                 if (duration <= 0) duration = 1f / clip.FrameRate;
@@ -664,8 +679,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
 
         void RegisterParameters() {
             foreach (var (name, type) in parameterTypes) {
-                if (!controller.Parameters.ContainsKey(name))
-                    controller.EnsureParameter(name, type, false);
+                controller.EnsureParameter(name, type, false);
             }
         }
 
@@ -675,11 +689,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                     snapshot.Add(parameter);
                 foreach (var (name, inferred) in snapshot) {
                     if (!controller.Parameters.TryGetValue(name, out var existing)) continue;
-                    var existingType = existing.type;
-                    bool bothNumeric = IsNumeric(existingType) && IsNumeric(inferred);
-                    if (existingType != inferred && !bothNumeric)
-                        throw new InvalidOperationException($"Parameter '{name}' is used with incompatible types.");
-                    parameterTypes[name] = existingType;
+                    parameterTypes[name] = ParameterTypeFallback.Merge(existing.type, inferred);
                 }
             }
         }
@@ -695,7 +705,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                             ValueType.Boolean => AnimatorControllerParameterType.Bool,
                             ValueType.Integer => AnimatorControllerParameterType.Int,
                             _ => AnimatorControllerParameterType.Float,
-                        }, set);
+                        });
                         break;
                     case IfStatement conditional:
                         CollectExpressionTypes(conditional.condition);
@@ -710,10 +720,10 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         }
 
         void CollectTreeParameterTypes(TreeStatement tree) {
-            if (tree.parameterX != null) AddParameterType(tree.parameterX, AnimatorControllerParameterType.Float, tree);
-            if (tree.parameterY != null) AddParameterType(tree.parameterY, AnimatorControllerParameterType.Float, tree);
+            if (tree.parameterX != null) AddParameterType(tree.parameterX, AnimatorControllerParameterType.Float);
+            if (tree.parameterY != null) AddParameterType(tree.parameterY, AnimatorControllerParameterType.Float);
             foreach (var child in tree.children) {
-                if (child.parameter != null) AddParameterType(child.parameter, AnimatorControllerParameterType.Float, tree);
+                if (child.parameter != null) AddParameterType(child.parameter, AnimatorControllerParameterType.Float);
                 if (child.tree != null) CollectTreeParameterTypes(child.tree);
             }
         }
@@ -722,9 +732,9 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             switch (expression) {
                 case BooleanParameterExpression parameter:
                     if (controller.Parameters.TryGetValue(parameter.parameter, out var existing))
-                        AddParameterType(parameter.parameter, existing.type, parameter);
+                        AddParameterType(parameter.parameter, existing.type);
                     else
-                        AddParameterType(parameter.parameter, AnimatorControllerParameterType.Bool, parameter);
+                        AddParameterType(parameter.parameter, AnimatorControllerParameterType.Bool);
                     break;
                 case ComparisonExpression comparison:
                     var type = comparison.value.type switch {
@@ -732,7 +742,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                         ValueType.Integer => AnimatorControllerParameterType.Int,
                         _ => AnimatorControllerParameterType.Float,
                     };
-                    AddParameterType(comparison.parameter, type, comparison);
+                    AddParameterType(comparison.parameter, type);
                     break;
                 case NotExpression not:
                     CollectExpressionTypes(not.operand);
@@ -744,15 +754,12 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             }
         }
 
-        void AddParameterType(string name, AnimatorControllerParameterType type, Statement source) {
+        void AddParameterType(string name, AnimatorControllerParameterType type) {
             if (parameterTypes.TryGetValue(name, out var existing)) {
-                if (existing == type || IsNumeric(existing) && IsNumeric(type)) {
-                    if (type == AnimatorControllerParameterType.Float) parameterTypes[name] = type;
-                    return;
-                }
-                Throw(source, $"Parameter '{name}' is used with incompatible types.");
+                parameterTypes[name] = ParameterTypeFallback.Merge(existing, type);
+                return;
             }
-            parameterTypes.Add(name, type);
+            parameterTypes.Add(name, ParameterTypeFallback.Merge(type, type));
         }
 
         Transform TryResolveTarget(string targetStr, out UnityObject target) {
@@ -812,15 +819,16 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 animation.resolvedPath = pathRemapper.GetVirtualPathForObject(transform);
             if (animation.type == null) animation.type = target.GetType();
             if (animation.IsPointerCurve) {
-                if (references == null || !references.TryGetValue(animation.refName, out var reference) || reference == null)
-                    throw new ParseException(animation.row, animation.col, $"Could not resolve reference '{animation.refName}'.");
-                animation.resolvedRef = reference;
+                foreach (var key in animation.keyframes) {
+                    if (references == null || !references.TryGetValue(key.refName, out var reference) || reference == null)
+                        throw new ParseException(animation.row, animation.col, $"Could not resolve reference '{key.refName}'.");
+                    key.resolvedRef = reference;
+                }
             }
         }
 
         sealed class CurveTrack {
             readonly SortedDictionary<float, Keyframe> keys = new();
-            public bool HasValue;
             public float LastValue;
             public float LastTime;
 
@@ -837,7 +845,6 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
 
         sealed class PointerCurveTrack {
             readonly SortedDictionary<float, ObjectReferenceKeyframe> keys = new();
-            public bool HasValue;
             public UnityObject LastValue;
             public float LastTime;
 
@@ -852,6 +859,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
 
         readonly struct ClauseScope : IDisposable {
             readonly List<List<AnimatorCondition>> clauses;
+            public int Count => clauses.Count;
 
             public ClauseScope(out List<List<AnimatorCondition>> clauses) {
                 this.clauses = ListPool<List<AnimatorCondition>>.Get();

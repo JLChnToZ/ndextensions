@@ -1,0 +1,17 @@
+{
+    "name": "NDExtensions.Editor.Tests",
+    "references": [
+        "NDExtensions.Editor",
+        "NDExtensions.Runtime",
+        "nadena.dev.ndmf",
+        "nadena.dev.ndmf.vrchat"
+    ],
+    "includePlatforms": ["Editor"],
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "System.Collections.Immutable.dll"
+    ],
+    "optionalUnityReferences": ["TestAssemblies"],
+    "autoReferenced": false
+}

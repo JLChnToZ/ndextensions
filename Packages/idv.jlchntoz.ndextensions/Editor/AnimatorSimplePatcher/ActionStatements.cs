@@ -13,27 +13,43 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         public readonly string target;
         public Type type;
         public readonly string property;
-        public readonly float value;
-        public readonly string refName;
-        public readonly EasingFactory.EasingType? easing;
-        public readonly float easingDuration;
+        public readonly AnimationKeyframe[] keyframes;
         public string resolvedPath;
-        public UnityObject resolvedRef;
 
         public AnimationStatement(
-            int row, int col, string target, Type type, string property, float value, string refName,
-            EasingFactory.EasingType? easing, float easingDuration
+            int row, int col, string target, Type type, string property, AnimationKeyframe[] keyframes
         ) : base(row, col) {
             this.target = target;
             this.type = type;
             this.property = property;
+            this.keyframes = keyframes;
+        }
+
+        public bool IsPointerCurve => keyframes[0].IsPointerKey;
+    }
+
+    sealed class AnimationKeyframe {
+        public readonly float value;
+        public readonly string refName;
+        public readonly EasingFactory.EasingType? easing;
+        public readonly float time;
+        public readonly bool hasTime;
+        public readonly bool absoluteTime;
+        public UnityObject resolvedRef;
+
+        public AnimationKeyframe(
+            float value, string refName, EasingFactory.EasingType? easing,
+            float time, bool hasTime, bool absoluteTime
+        ) {
             this.value = value;
             this.refName = refName;
             this.easing = easing;
-            this.easingDuration = easingDuration;
+            this.time = time;
+            this.hasTime = hasTime;
+            this.absoluteTime = absoluteTime;
         }
 
-        public bool IsPointerCurve => refName != null;
+        public bool IsPointerKey => refName != null;
     }
 
     sealed class TreeStatement : ActionStatement {

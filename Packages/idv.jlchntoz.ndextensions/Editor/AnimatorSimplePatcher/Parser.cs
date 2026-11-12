@@ -6,7 +6,7 @@ using UnityEngine.Pool;
 
 namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
     sealed class Parser : IDisposable {
-        static readonly char[] symbols = "!&|=<>+-*/(){}[],:.;".ToCharArray();
+        static readonly char[] symbols = "!&|=<>+-*/(){}[],:.;@".ToCharArray();
         static bool IsCompoundSymbol(char first, char second) => (first, second) switch {
             ('&', '&') or ('|', '|') or ('=', '=') or ('!', '=') or ('<', '=') or ('>', '=') or ('-', '>') => true,
             _ => false,
@@ -131,7 +131,12 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 string parameter = null;
                 float threshold = 0, coordinateY = 0;
                 if (kind == TreeKind.Direct) {
-                    parameter = ParseName("Expected a direct blend parameter.").text;
+                    if (Current.type == StackParser.TokenType.Number) {
+                        threshold = ParseNumber(Current);
+                        position++;
+                    } else {
+                        parameter = ParseName("Expected a direct blend parameter or constant weight.").text;
+                    }
                 } else if (kind == TreeKind.OneDimensional) {
                     threshold = ParseNumber(Expect(StackParser.TokenType.Number, "Expected a blend threshold."));
                 } else {
@@ -258,34 +263,77 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 }
             var property = sb.ToString();
             ExpectSymbol("->");
-            float value = 0;
-            string referenceName = null;
-            if (Current.type == StackParser.TokenType.Number) {
-                value = ParseNumber(Current);
-                position++;
-            } else if (Current.type == StackParser.TokenType.Identifier ||
-                       Current.type == StackParser.TokenType.SingleQuotedString ||
-                       Current.type == StackParser.TokenType.DoubleQuotedString) {
-                referenceName = Current.text;
-                position++;
-            } else {
-                Error(Current, "Expected a numeric value or object reference after '->'.");
+            var keyframes = new List<AnimationKeyframe> { ParseAnimationValue() };
+            var first = keyframes[0];
+            if (IsAnimationTimeStart()) {
+                var (time, absolute) = ParseAnimationTime();
+                keyframes[0] = new AnimationKeyframe(
+                    first.value, first.refName, null, time, true, absolute
+                );
+            } else if (!IsSymbol("->") && !IsSymbol(";")) {
+                Error(Current, "Expected a keyframe time or '->' after the first animation value.");
             }
-            EasingFactory.EasingType? easing = null;
-            var easingDuration = 0f;
-            if (referenceName == null && Current.type == StackParser.TokenType.Identifier) {
-                var easingToken = Current;
-                if (!Enum.TryParse(easingToken.text, true, out EasingFactory.EasingType selectedEasing))
-                    Error(easingToken, "Unknown easing mode.");
-                easing = selectedEasing;
-                position++;
-                if (easing != EasingFactory.EasingType.Linear) {
-                    easingDuration = ParseDuration();
-                    if (easingDuration <= 0) Error(easingToken, "Easing duration must be greater than zero.");
-                }
+
+            var previousTime = keyframes[0].hasTime ? keyframes[0].time : 0;
+            while (MatchSymbol("->")) {
+                var next = ParseAnimationValue();
+                if (next.IsPointerKey != first.IsPointerKey)
+                    Error(Current, "An animation statement cannot mix numeric and object-reference keyframes.");
+                EasingFactory.EasingType? easing = null;
+                if (!next.IsPointerKey && TryParseEasing(out var selectedEasing, out _))
+                    easing = selectedEasing;
+                if (!IsAnimationTimeStart())
+                    Error(Current, "Expected a keyframe time after the animation value.");
+                var (time, absolute) = ParseAnimationTime();
+                var keyTime = absolute ? time : previousTime + time;
+                if (float.IsNaN(keyTime) || float.IsInfinity(keyTime) || keyTime <= previousTime)
+                    Error(Current, "Animation keyframe times must increase.");
+                keyframes.Add(new AnimationKeyframe(
+                    next.value, next.refName, easing, time, true, absolute
+                ));
+                previousTime = keyTime;
             }
             ExpectSymbol(";");
-            return new AnimationStatement(start.row, start.col, target.text, type, property, value, referenceName, easing, easingDuration);
+            return new AnimationStatement(start.row, start.col, target.text, type, property, keyframes.ToArray());
+        }
+
+        AnimationKeyframe ParseAnimationValue() {
+            if (Current.type == StackParser.TokenType.Number) {
+                var value = ParseNumber(Current);
+                position++;
+                return new AnimationKeyframe(value, null, null, 0, false, false);
+            }
+            if (Current.type == StackParser.TokenType.Identifier ||
+                Current.type == StackParser.TokenType.SingleQuotedString ||
+                Current.type == StackParser.TokenType.DoubleQuotedString) {
+                var referenceName = Current.text;
+                position++;
+                return new AnimationKeyframe(0, referenceName, null, 0, false, false);
+            }
+            Error(Current, "Expected a numeric value or object reference after '->'.");
+            return null;
+        }
+
+        bool TryParseEasing(out EasingFactory.EasingType easing, out Token token) {
+            token = Current;
+            if (token.type != StackParser.TokenType.Identifier) {
+                easing = default;
+                return false;
+            }
+            if (!Enum.TryParse(token.text, true, out easing))
+                Error(token, "Unknown easing mode.");
+            position++;
+            return true;
+        }
+
+        bool IsAnimationTimeStart() => IsSymbol("@") || Current.type == StackParser.TokenType.Number;
+
+        (float time, bool absolute) ParseAnimationTime() {
+            var absolute = MatchSymbol("@");
+            var time = ParseDuration();
+            if (time < 0)
+                Error(Previous, "Animation time must not be negative.");
+            return (time, absolute);
         }
 
         Value ParseValue() {

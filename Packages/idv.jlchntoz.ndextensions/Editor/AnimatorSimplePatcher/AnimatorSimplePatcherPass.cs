@@ -199,7 +199,11 @@ namespace JLChnToZ.NDExtensions.Editors {
                 wordWrap = true,
                 richText = false,
             };
-            var rect = EditorGUILayout.GetControlRect(false, multilineTextField.CalcHeight(textFieldContent, EditorGUIUtility.currentViewWidth) + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing);
+            var rect = EditorGUILayout.GetControlRect(false,
+                multilineTextField.CalcHeight(textFieldContent, EditorGUIUtility.currentViewWidth - EditorGUI.indentLevel * 15f) +
+                EditorGUIUtility.singleLineHeight +
+                EditorGUIUtility.standardVerticalSpacing
+            );
             using (var prop = new EditorGUI.PropertyScope(rect, i18n.GetContent("AnimatorSimplePatcher.code"), codeProperty))
             using (var change = new EditorGUI.ChangeCheckScope()) {
                 var prefixLabelRect = new Rect(rect) {
@@ -208,7 +212,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                 var helpButtonWidth = EditorGUIUtility.singleLineHeight;
                 EditorGUI.PrefixLabel(prefixLabelRect, prop.content);
                 rect.yMin = prefixLabelRect.yMax + EditorGUIUtility.standardVerticalSpacing;
-                textFieldContent.text = EditorGUI.TextArea(rect, textFieldContent.text);
+                textFieldContent.text = EditorGUI.TextArea(rect, textFieldContent.text, multilineTextField);
                 if (change.changed) codeProperty.stringValue = textFieldContent.text;
                 if (GUI.Button(new Rect(prefixLabelRect) {
                     xMin = prefixLabelRect.xMax - helpButtonWidth,

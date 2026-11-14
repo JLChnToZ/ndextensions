@@ -18,10 +18,12 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
 
         public static Program Parse(string source) {
             using var parser = new Parser(source);
-            return parser.Parse();
+            var root = parser.ParseBlock(false);
+            if (!parser.AtEnd) Error(parser.Current, "Unexpected token.");
+            return new Program(root, parser.blocks);
         }
 
-        public Parser(string source) {
+        Parser(string source) {
             tokens = ListPool<Token>.Get();
             blocks = ListPool<Block>.Get();
             foreach (var (row, col, type, text) in StackParser.Tokenize(source, symbols)) {
@@ -37,18 +39,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             }
         }
 
-        public void Dispose() {
-            foreach (var block in blocks)
-                ListPool<Statement>.Release(block.statements);
-            ListPool<Block>.Release(blocks);
-            ListPool<Token>.Release(tokens);
-        }
-
-        public Program Parse() {
-            var root = ParseBlock(false);
-            if (!AtEnd) Error(Current, "Unexpected token.");
-            return new Program(root, blocks);
-        }
+        public void Dispose() => ListPool<Token>.Release(tokens);
 
         Block ParseBlock(bool isBraced) {
             var block = new Block();

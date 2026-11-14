@@ -168,10 +168,6 @@ namespace JLChnToZ.NDExtensions.Editors {
 
         protected override void OnEnable() {
             base.OnEnable();
-            multilineTextField ??= new GUIStyle(EditorStyles.textField) {
-                wordWrap = true,
-                richText = false,
-            };
             codeProperty = serializedObject.FindProperty(nameof(AnimatorSimplePatcher.code));
             extraReferencesProperty = serializedObject.FindProperty(nameof(AnimatorSimplePatcher.extraReferences));
 #if VRC_SDK_VRCSDK3
@@ -199,6 +195,10 @@ namespace JLChnToZ.NDExtensions.Editors {
             EditorGUILayout.PropertyField(priorityProperty, i18n.GetContent("AnimatorSimplePatcher.priority"));
             EditorGUILayout.Space();
             textFieldContent.text = codeProperty.stringValue;
+            multilineTextField ??= new GUIStyle(EditorStyles.textField) {
+                wordWrap = true,
+                richText = false,
+            };
             var rect = EditorGUILayout.GetControlRect(false, multilineTextField.CalcHeight(textFieldContent, EditorGUIUtility.currentViewWidth) + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing);
             using (var prop = new EditorGUI.PropertyScope(rect, i18n.GetContent("AnimatorSimplePatcher.code"), codeProperty))
             using (var change = new EditorGUI.ChangeCheckScope()) {

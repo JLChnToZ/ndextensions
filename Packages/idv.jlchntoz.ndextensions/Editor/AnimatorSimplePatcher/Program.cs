@@ -30,7 +30,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         public void Dispose() {
             foreach (var block in blocks)
                 ListPool<Statement>.Release(block.statements);
-            blocks.Clear();
+            ListPool<Block>.Release(blocks);
         }
     }
 }

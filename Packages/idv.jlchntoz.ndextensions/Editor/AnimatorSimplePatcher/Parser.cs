@@ -7,14 +7,19 @@ using UnityEngine.Pool;
 namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
     sealed class Parser : IDisposable {
         static readonly char[] symbols = "!&|=<>+-*/(){}[],:.;@".ToCharArray();
+        readonly List<Token> tokens;
+        readonly List<Block> blocks;
+        int position;
+
         static bool IsCompoundSymbol(char first, char second) => (first, second) switch {
             ('&', '&') or ('|', '|') or ('=', '=') or ('!', '=') or ('<', '=') or ('>', '=') or ('-', '>') => true,
             _ => false,
         };
 
-        readonly List<Token> tokens;
-        readonly List<Block> blocks;
-        int position;
+        public static Program Parse(string source) {
+            using var parser = new Parser(source);
+            return parser.Parse();
+        }
 
         public Parser(string source) {
             tokens = ListPool<Token>.Get();
@@ -43,18 +48,6 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             var root = ParseBlock(false);
             if (!AtEnd) Error(Current, "Unexpected token.");
             return new Program(root, blocks);
-        }
-
-        public bool TryParse(out Program program, out Exception exception) {
-            try {
-                program = Parse();
-                exception = null;
-                return true;
-            } catch (Exception e) {
-                program = null;
-                exception = e;
-                return false;
-            }
         }
 
         Block ParseBlock(bool isBraced) {

@@ -15,6 +15,7 @@ namespace JLChnToZ.NDExtensions {
         public int priority;
         [Multiline] public string code;
         public ExtraReference[] extraReferences;
+        [NonSerialized] public Exception lastException;
 
         [Serializable]
         public struct ExtraReference {

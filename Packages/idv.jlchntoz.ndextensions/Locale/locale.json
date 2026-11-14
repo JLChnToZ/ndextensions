@@ -124,6 +124,7 @@
     "AnimatorSimplePatcher.code:tooltip": "Program compiled into animator states and transitions during the avatar build.",
     "AnimatorSimplePatcher.extraReferences": "Extra References",
     "AnimatorSimplePatcher.extraReferences:tooltip": "Named Unity object references used to resolve animation targets and object-reference values in the code.",
+    "AnimatorSimplePatcher.validate": "Validate Code",
     "ParameterProvider": "This parameter is provided by {0} ({1})."
   },
   "zh-hant": {
@@ -250,6 +251,7 @@
     "AnimatorSimplePatcher.code:tooltip": "在 Avatar 建置時編譯為動畫器狀態與轉場的程式。",
     "AnimatorSimplePatcher.extraReferences": "額外參照",
     "AnimatorSimplePatcher.extraReferences:tooltip": "供程式解析動畫目標與物件參照值使用的命名 Unity 物件參照。",
+    "AnimatorSimplePatcher.validate": "驗證程式碼",
     "ParameterProvider": "此參數由 {0} ({1}) 提供。"
   },
   "zh-hans": {
@@ -376,6 +378,7 @@
     "AnimatorSimplePatcher.code:tooltip": "在 Avatar 构建时编译为动画器状态与过渡的程序。",
     "AnimatorSimplePatcher.extraReferences": "额外引用",
     "AnimatorSimplePatcher.extraReferences:tooltip": "供程序解析动画目标与对象引用值使用的命名 Unity 对象引用。",
+    "AnimatorSimplePatcher.validate": "验证代码",
     "ParameterProvider": "此参数由 {0} ({1}) 提供。"
   },
   "ja": {
@@ -502,6 +505,7 @@
     "AnimatorSimplePatcher.code:tooltip": "アバターのビルド時にアニメーターのステートと遷移へコンパイルされるプログラムです。",
     "AnimatorSimplePatcher.extraReferences": "追加参照",
     "AnimatorSimplePatcher.extraReferences:tooltip": "コード内のアニメーション対象とオブジェクト参照値を解決するための、名前付き Unity オブジェクト参照です。",
+    "AnimatorSimplePatcher.validate": "コードを検証",
     "ParameterProvider": "このパラメーターは {0} ({1}) によって提供されます。"
   },
   "ko": {
@@ -628,6 +632,7 @@
     "AnimatorSimplePatcher.code:tooltip": "아바타 빌드 시 애니메이터 상태와 전환으로 컴파일되는 프로그램입니다.",
     "AnimatorSimplePatcher.extraReferences": "추가 참조",
     "AnimatorSimplePatcher.extraReferences:tooltip": "코드에서 애니메이션 대상과 오브젝트 참조 값을 확인하는 데 사용하는 이름이 지정된 Unity 오브젝트 참조입니다.",
+    "AnimatorSimplePatcher.validate": "코드 검증",
     "ParameterProvider": "이 매개변수는 {0} ({1})에 의해 제공됩니다."
   }
 }

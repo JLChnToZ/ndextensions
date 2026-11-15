@@ -14,13 +14,15 @@ namespace JLChnToZ.NDExtensions.Tests {
     public class BlendTreeTests {
         GameObject root;
         VirtualAnimatorController controller;
+        CloneContext cloneContext;
         AAPContext aap;
         VirtualLayer layer;
 
         [SetUp]
         public void SetUp() {
             root = new GameObject("root");
-            controller = VirtualAnimatorController.Create(new CloneContext(GenericPlatformAnimatorBindings.Instance));
+            cloneContext = new CloneContext(GenericPlatformAnimatorBindings.Instance);
+            controller = VirtualAnimatorController.Create(cloneContext);
             aap = AAPContext.ForController(new BuildContext(root, null, isClone: true), controller);
         }
 
@@ -28,11 +30,9 @@ namespace JLChnToZ.NDExtensions.Tests {
         public void TearDown() => Object.DestroyImmediate(root);
 
         void Compile(string source) {
-            using var parser = new Parser(source);
-            using var program = parser.Parse();
+            using var program = Parser.Parse(source);
             var references = new Dictionary<string, Object> { ["this"] = root.transform };
-            using var context = new CompileContext(controller, references, null, DummyClips.Instance, root.transform, true, aap);
-            context.Validate(program);
+            using var context = new CompileContext(controller, references, null, DummyClips.Instance, root.transform, true, aap, cloneContext);
             context.Compile(program, 0, "test");
             layer = controller.Layers.Single();
         }
@@ -175,14 +175,12 @@ namespace JLChnToZ.NDExtensions.Tests {
         [TestCase("tree (p) normalized { 0: {} }")]
         [TestCase("tree direct normalized normalized { p: {} }")]
         public void RejectsMalformedTrees(string source) {
-            using var parser = new Parser(source);
-            Assert.Throws<ParseException>(() => parser.Parse());
+            Assert.Throws<ParseException>(() => Parser.Parse(source));
         }
 
         [Test]
         public void TreeCanStillBeAnAnimationTarget() {
-            using var parser = new Parser("tree (Animator):m_Speed -> 1;");
-            using var program = parser.Parse();
+            using var program = Parser.Parse("tree (Animator):m_Speed -> 1;");
             Assert.IsInstanceOf<AnimationStatement>(program.root.statements[0]);
         }
     }

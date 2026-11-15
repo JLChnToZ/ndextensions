@@ -6,7 +6,7 @@ namespace JLChnToZ.NDExtensions.Tests {
     public class AnimatorSimplePatcherParserTests {
         [Test]
         public void ParsesAssignmentsRangesDurationsAndQuotedNames() {
-            using var parser = new Parser(@"
+            using var program = Parser.Parse(@"
                 // This is a comment.
                 set ""My Flag"" = true;
                 set Count -= 2;
@@ -14,7 +14,6 @@ namespace JLChnToZ.NDExtensions.Tests {
                 set RandomValue = random(-2, 3);
                 wait 250ms;
                 ""target/path"" (Animator):m_Speed -> -1.5e-1 -> 0 CubicOut 0.5s;");
-            using var program = parser.Parse();
             var statements = program.root.statements;
             Assert.AreEqual(6, statements.Count);
             var flag = (SetStatement)statements[0];
@@ -41,8 +40,7 @@ namespace JLChnToZ.NDExtensions.Tests {
 
         [Test]
         public void ParsesChainedAnimationKeyframesWithRelativeAndAbsoluteTimes() {
-            using var parser = new Parser(@"this (Animator):m_Speed -> 0 250ms -> 1 CubicOut @1s -> 0 500ms;");
-            using var program = parser.Parse();
+            using var program = Parser.Parse(@"this (Animator):m_Speed -> 0 250ms -> 1 CubicOut @1s -> 0 500ms;");
             var animation = (AnimationStatement)program.root.statements[0];
             Assert.AreEqual(3, animation.keyframes.Length);
             Assert.AreEqual(0.25f, animation.keyframes[0].time);
@@ -56,8 +54,7 @@ namespace JLChnToZ.NDExtensions.Tests {
 
         [Test]
         public void ParsesChainedReferenceKeyframes() {
-            using var parser = new Parser(@"this (Animator):m_Controller -> asset -> this @1s;");
-            using var program = parser.Parse();
+            using var program = Parser.Parse(@"this (Animator):m_Controller -> asset -> this @1s;");
             var animation = (AnimationStatement)program.root.statements[0];
             Assert.IsTrue(animation.IsPointerCurve);
             Assert.AreEqual("asset", animation.keyframes[0].refName);
@@ -67,10 +64,9 @@ namespace JLChnToZ.NDExtensions.Tests {
 
         [Test]
         public void ParsesConditionPrecedenceAndElseIf() {
-            using var parser = new Parser(@"if (A || B && !C) exit; else if (D >= 2) goto end; else wait 1s;
+            using var program = Parser.Parse(@"if (A || B && !C) exit; else if (D >= 2) goto end; else wait 1s;
                 end:
                 exit;");
-            using var program = parser.Parse();
             var conditional = (IfStatement)program.root.statements[0];
             var or = (BinaryExpression)conditional.condition;
             Assert.IsFalse(or.IsAnd);
@@ -80,18 +76,37 @@ namespace JLChnToZ.NDExtensions.Tests {
             Assert.AreEqual("B", ((BooleanParameterExpression)and.left).parameter);
             Assert.AreEqual("C", ((BooleanParameterExpression)((NotExpression)and.right).operand).parameter);
             var elseIf = (IfStatement)conditional.elseBlock.statements[0];
-            Assert.AreEqual(">=", ((ComparisonExpression)elseIf.condition).op);
+            Assert.AreEqual(ComparisonOperator.EqualsOrGreater, ((ComparisonExpression)elseIf.condition).op);
             Assert.IsInstanceOf<GotoStatement>(elseIf.thenBlock.statements[0]);
             Assert.IsInstanceOf<WaitStatement>(elseIf.elseBlock.statements[0]);
         }
 
         [Test]
         public void ParsesSameLineStatementAfterTerminatedLabel() {
-            using var parser = new Parser("done:; exit;");
-            using var program = parser.Parse();
+            using var program = Parser.Parse("done:; exit;");
 
             Assert.IsInstanceOf<LabelStatement>(program.root.statements[0]);
             Assert.IsInstanceOf<ExitStatement>(program.root.statements[1]);
+        }
+
+        [Test]
+        public void ParsesImportsAndPreservesImportAsTargetOrLabel() {
+            using var program = Parser.Parse(@"IMPORT ""Walk Clip"";
+                tree (speed) { 0: import walk; }
+                import (Animator):m_Speed -> 1;
+                import:; exit;");
+            Assert.AreEqual("Walk Clip", ((ImportStatement)program.root.statements[0]).referenceName);
+            Assert.AreEqual("walk", ((TreeStatement)program.root.statements[1]).children[0].import.referenceName);
+            Assert.AreEqual("import", ((AnimationStatement)program.root.statements[2]).target);
+            Assert.AreEqual("import", ((LabelStatement)program.root.statements[3]).name);
+        }
+
+        [TestCase("import;")]
+        [TestCase("import walk")]
+        [TestCase("tree (speed) { 0: import walk }")]
+        [TestCase("tree (speed) { 0: { import walk; } }")]
+        public void RejectsMalformedImports(string source) {
+            Assert.Throws<ParseException>(() => Parser.Parse(source));
         }
 
         [TestCase("wait 0s;")]
@@ -106,8 +121,7 @@ namespace JLChnToZ.NDExtensions.Tests {
         [TestCase("this (Animator):m_Speed -> 0 -> asset 1s;")]
         [TestCase("set P = Source(0, );")]
         public void RejectsInvalidSyntax(string source) {
-            using var parser = new Parser(source);
-            Assert.Throws<ParseException>(() => parser.Parse());
+            Assert.Throws<ParseException>(() => Parser.Parse(source));
         }
     }
 }

@@ -12,12 +12,14 @@ namespace JLChnToZ.NDExtensions.Tests {
     public class SharedTreeTests {
         GameObject root;
         VirtualAnimatorController controller;
+        CloneContext cloneContext;
         AAPContext aap;
 
         [SetUp]
         public void SetUp() {
             root = new GameObject("root");
-            controller = VirtualAnimatorController.Create(new CloneContext(GenericPlatformAnimatorBindings.Instance));
+            cloneContext = new CloneContext(GenericPlatformAnimatorBindings.Instance);
+            controller = VirtualAnimatorController.Create(cloneContext);
             aap = AAPContext.ForController(new BuildContext(root, null, isClone: true), controller);
         }
 
@@ -25,11 +27,9 @@ namespace JLChnToZ.NDExtensions.Tests {
         public void TearDown() => Object.DestroyImmediate(root);
 
         void Compile(string source, int priority = 17) {
-            using var parser = new Parser(source);
-            using var program = parser.Parse();
+            using var program = Parser.Parse(source);
             var references = new Dictionary<string, Object> { ["this"] = root.transform };
-            using var context = new CompileContext(controller, references, null, DummyClips.Instance, root.transform, false, aap);
-            context.Validate(program);
+            using var context = new CompileContext(controller, references, null, DummyClips.Instance, root.transform, false, aap, cloneContext);
             context.Compile(program, priority, "Patcher");
         }
 

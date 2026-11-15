@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("NDExtensions.Editor.Tests")]
@@ -7,6 +8,16 @@ using UnityObject = UnityEngine.Object;
 namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
     abstract class ActionStatement : Statement {
         protected ActionStatement(int row, int col) : base(row, col) { }
+    }
+
+    sealed class ImportStatement : ActionStatement {
+        public readonly string referenceName;
+        public Motion motion;
+        public float duration;
+
+        public ImportStatement(int row, int col, string referenceName) : base(row, col) {
+            this.referenceName = referenceName;
+        }
     }
 
     sealed class AnimationStatement : ActionStatement {

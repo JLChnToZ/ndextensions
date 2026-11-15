@@ -14,25 +14,30 @@ namespace JLChnToZ.NDExtensions.Tests {
     public class AnimatorSimplePatcherCompilerTests {
         GameObject root;
         VirtualAnimatorController controller;
+        CloneContext cloneContext;
         AAPContext aap;
         Dictionary<string, Object> references;
+        readonly List<Object> assets = new();
 
         [SetUp]
         public void SetUp() {
             root = new GameObject("root");
-            controller = VirtualAnimatorController.Create(new CloneContext(GenericPlatformAnimatorBindings.Instance));
+            cloneContext = new CloneContext(GenericPlatformAnimatorBindings.Instance);
+            controller = VirtualAnimatorController.Create(cloneContext);
             aap = AAPContext.ForController(new BuildContext(root, null, isClone: true), controller);
             references = new Dictionary<string, Object> { ["this"] = root.transform, ["asset"] = root };
         }
 
         [TearDown]
-        public void TearDown() => Object.DestroyImmediate(root);
+        public void TearDown() {
+            foreach (var asset in assets) Object.DestroyImmediate(asset);
+            assets.Clear();
+            Object.DestroyImmediate(root);
+        }
 
         VirtualLayer Compile(string source) {
-            using var parser = new Parser(source);
-            using var program = parser.Parse();
-            using var context = new CompileContext(controller, references, null, DummyClips.Instance, root.transform, true, aap);
-            context.Validate(program);
+            using var program = Parser.Parse(source);
+            using var context = new CompileContext(controller, references, null, DummyClips.Instance, root.transform, true, aap, cloneContext);
             context.Compile(program, 0, "test");
             return controller.Layers.Single();
         }
@@ -209,6 +214,116 @@ namespace JLChnToZ.NDExtensions.Tests {
         [TestCase("duplicate:\nexit;\nduplicate:\nexit;")]
         public void RejectsInvalidLabels(string source) {
             Assert.Throws<ParseException>(() => Compile(source));
+        }
+
+        AnimationClip MakeClip(float length) {
+            var clip = new AnimationClip { name = "source" };
+            assets.Add(clip);
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "m_Speed"),
+                AnimationCurve.Linear(0, 0, length, 1));
+            return clip;
+        }
+
+        BlendTree MakeTree(string parameter, Motion motion, float speed) {
+            var tree = new BlendTree { blendType = BlendTreeType.Simple1D, blendParameter = parameter };
+            assets.Add(tree);
+            tree.children = new[] { new ChildMotion { motion = motion, timeScale = speed } };
+            return tree;
+        }
+
+        [Test]
+        public void SingleImportUsesSharedTreeAndClonesSourceClip() {
+            var clip = MakeClip(2);
+            references["walk"] = clip;
+            Compile("import walk;");
+            var imported = (VirtualClip)aap.RootBlendTree.Children.Single().Motion;
+            Assert.AreSame(cloneContext.Clone(clip), imported);
+            Assert.AreEqual(1f, imported.GetFloatCurve("", typeof(Animator), "m_Speed").Evaluate(2), 0.0001f);
+            Assert.AreEqual(2f, clip.length, 0.0001f);
+        }
+
+        [Test]
+        public void SeparateCompilationsReuseSharedMotionClone() {
+            var clip = MakeClip(2);
+            references["walk"] = clip;
+            Compile("import walk;");
+            Compile("import walk;");
+            var children = aap.RootBlendTree.Children;
+            Assert.AreEqual(2, children.Count);
+            Assert.AreSame(cloneContext.Clone(clip), children[0].Motion);
+            Assert.AreSame(children[0].Motion, children[1].Motion);
+        }
+
+        [Test]
+        public void ImportTreeChildRegistersParametersAndUsesNestedPlaybackSpeeds() {
+            var clip = MakeClip(4);
+            var inner = MakeTree("inner", clip, -2);
+            var outer = MakeTree("outer", inner, 0.5f);
+            references["motion"] = outer;
+            controller.EnsureParameter("inner", AnimatorControllerParameterType.Bool);
+            var state = Compile("tree (weight) { 0: import motion; } wait 2s; exit;").StateMachine.DefaultState;
+            var tree = (VirtualBlendTree)state.Motion;
+            Assert.AreSame(cloneContext.Clone((Motion)outer), tree.Children[0].Motion);
+            Assert.AreEqual(0.5f, state.Transitions[0].ExitTime.Value, 0.0001f);
+            Assert.AreEqual(AnimatorControllerParameterType.Float, controller.Parameters["inner"].type);
+            Assert.AreEqual(AnimatorControllerParameterType.Float, controller.Parameters["outer"].type);
+            Assert.AreEqual(4f, clip.length, 0.0001f);
+        }
+
+        [Test]
+        public void WaitLongerThanImportedClipKeepsFullDuration() {
+            references["walk"] = MakeClip(2);
+            var state = Compile("import walk; wait 3s; exit;").StateMachine.DefaultState;
+            Assert.AreEqual(1.5f, state.Transitions[0].ExitTime.Value, 0.0001f);
+        }
+
+        [Test]
+        public void ComposesImportsWithAnimationWithoutFlow() {
+            references["walk"] = MakeClip(2);
+            var state = Compile("import walk; this (Animator):m_Speed -> 1;").StateMachine.DefaultState;
+            var wrapper = (VirtualBlendTree)state.Motion;
+            Assert.AreEqual(2, wrapper.Children.Count);
+            Assert.IsTrue(wrapper.Children.Any(child => ReferenceEquals(child.Motion, cloneContext.Clone((Motion)references["walk"]))));
+        }
+
+        [TestCase("import walk; this (Animator):m_Speed -> 1; wait 1s;")]
+        [TestCase("import walk; import walk; wait 1s;")]
+        public void RejectsMixedImportedMotionsWithFlow(string source) {
+            references["walk"] = MakeClip(2);
+            Assert.Throws<ParseException>(() => Compile(source));
+        }
+
+        [TestCase("missing")]
+        [TestCase("null")]
+        [TestCase("asset")]
+        public void RejectsMissingNullOrWrongMotionReferences(string name) {
+            references["null"] = null;
+            Assert.Throws<ParseException>(() => Compile($"import {name};"));
+        }
+
+        [Test]
+        public void RejectsZeroDurationWithWaitBeforeCreatingLayer() {
+            var empty = new BlendTree { blendType = BlendTreeType.Simple1D, blendParameter = "p" };
+            assets.Add(empty);
+            references["empty"] = empty;
+            StringAssert.Contains("duration", Assert.Throws<ParseException>(() => Compile("import empty; wait 1s; exit;")).Message);
+            Assert.IsEmpty(controller.Layers);
+            Assert.IsFalse(controller.Parameters.ContainsKey("p"));
+        }
+
+        [Test]
+        public void AllowsRepeatedImportedSubtrees() {
+            var clip = MakeClip(1);
+            var inner = MakeTree("inner", clip, 1);
+            var outer = MakeTree("outer", inner, 1);
+            outer.children = new[] {
+                new ChildMotion { motion = inner, timeScale = 1 },
+                new ChildMotion { motion = inner, timeScale = 1 },
+            };
+            references["tree"] = outer;
+            Compile("import tree;");
+            var imported = (VirtualBlendTree)aap.RootBlendTree.Children.Single().Motion;
+            Assert.AreSame(imported.Children[0].Motion, imported.Children[1].Motion);
         }
 
 #if VRC_SDK_VRCSDK3

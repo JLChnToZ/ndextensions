@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 #if VRC_SDK_VRCSDK3
 using VRC.SDK3.Avatars.Components;
@@ -16,6 +17,18 @@ namespace JLChnToZ.NDExtensions {
         [Multiline] public string code;
         public ExtraReference[] extraReferences;
         [NonSerialized] public Exception lastException;
+
+        public void GetAllReferences(Dictionary<string, UnityObject> references) {
+            if (extraReferences == null) return;
+            foreach (var entry in extraReferences) {
+                var name = entry.name;
+                if (string.IsNullOrEmpty(name)) {
+                    if (entry.reference == null) continue;
+                    name = entry.reference.name;
+                }
+                references.TryAdd(name, entry.reference);
+            }
+        }
 
         [Serializable]
         public struct ExtraReference {

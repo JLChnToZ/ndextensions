@@ -9,15 +9,17 @@ using nadena.dev.ndmf.animator;
 using UnityObject = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
-    sealed class CompileContext : IDisposable {
+    sealed partial class CompileContext : IDisposable {
         readonly VirtualAnimatorController controller;
         readonly AAPContext aap;
+        readonly CloneContext cloneContext;
         readonly IReadOnlyDictionary<string, UnityObject> references;
         readonly ObjectPathRemapper pathRemapper;
         readonly DummyClips dummyClips;
         readonly Transform fallbackRoot;
         readonly Dictionary<string, AnimatorControllerParameterType> parameterTypes;
         readonly Dictionary<string, FlowNode> labels;
+        readonly Dictionary<Motion, VirtualMotion> motionMap;
         readonly List<(FlowNode node, string label, int row, int col)> gotos;
         readonly List<FlowNode> nodes;
         readonly bool writeDefaults;
@@ -113,13 +115,17 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         }
 
         static void ValidateTreeSegments(Block block) {
-            TreeStatement tree = null;
+            ActionStatement tree = null;
             int motions = 0;
             bool hasAnimation = false;
             foreach (var statement in block.statements) {
                 switch (statement) {
                     case TreeStatement blendTree:
                         tree ??= blendTree;
+                        motions++;
+                        break;
+                    case ImportStatement import:
+                        tree ??= import;
                         motions++;
                         break;
                     case AnimationStatement _:
@@ -141,9 +147,9 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             CheckTreeSegment(ref tree, ref motions);
         }
 
-        static void CheckTreeSegment(ref TreeStatement tree, ref int motions) {
+        static void CheckTreeSegment(ref ActionStatement tree, ref int motions) {
             if (tree != null && motions > 1)
-                Throw(tree, "A segment in a program with flow control cannot combine a blend tree with other motions.");
+                Throw(tree, "A segment in a program with flow control cannot combine a tree or imported motion with other motions.");
             tree = null;
             motions = 0;
         }
@@ -155,8 +161,10 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             DummyClips dummyClips,
             Transform fallbackRoot,
             bool writeDefaults,
-            AAPContext aap
+            AAPContext aap,
+            CloneContext cloneContext
         ) {
+            this.cloneContext = cloneContext ?? throw new ArgumentNullException(nameof(cloneContext));
             this.controller = controller;
             this.aap = aap;
             this.references = references;
@@ -165,6 +173,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             this.fallbackRoot = fallbackRoot;
             this.writeDefaults = writeDefaults;
             parameterTypes = DictionaryPool<string, AnimatorControllerParameterType>.Get();
+            motionMap = DictionaryPool<Motion, VirtualMotion>.Get();
             labels = DictionaryPool<string, FlowNode>.Get();
             gotos = ListPool<(FlowNode node, string label, int row, int col)>.Get();
             nodes = ListPool<FlowNode>.Get();
@@ -175,23 +184,56 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             ListPool<(FlowNode node, string label, int row, int col)>.Release(gotos);
             DictionaryPool<string, FlowNode>.Release(labels);
             DictionaryPool<string, AnimatorControllerParameterType>.Release(parameterTypes);
+            DictionaryPool<Motion, VirtualMotion>.Release(motionMap);
         }
 
-        public void Validate(Program program) {
+        void Validate(Program program) {
             CollectParameterTypes(program.root);
             ValidateParameterTypes();
             ResolveAnimationTargets(program.root);
             if (ContainsFlow(program.root)) ValidateTreeSegments(program.root);
+            ValidateImportWaits(program.root);
 #if !VRC_SDK_VRCSDK3
             if (ContainsSet(program.root))
                 throw new NotSupportedException("Parameter-driver instructions require the VRChat SDK3 avatar package.");
 #endif
         }
 
+        static void ValidateImportWaits(Block block) {
+            using (ListPool<ISegment>.Get(out var segments))
+            using (ListPool<ActionStatement>.Get(out var actions)) {
+                Split(block, segments, actions);
+                foreach (var segment in segments) {
+                    if (segment is ActionSegment action && action.waitDuration.HasValue) {
+                        foreach (var statement in action.actions) ValidateImportWait(statement);
+                    } else if (segment is IfSegment conditional) {
+                        ValidateImportWaits(conditional.statement.thenBlock);
+                        if (conditional.statement.elseBlock != null) ValidateImportWaits(conditional.statement.elseBlock);
+                    }
+                }
+            }
+        }
+
+        static void ValidateImportWait(ActionStatement statement) {
+            if (statement is ImportStatement import && import.duration <= 0)
+                Throw(import, "Cannot wait on an imported motion with no duration.");
+            if (statement is TreeStatement tree)
+                foreach (var child in tree.children) {
+                    if (child.import != null) ValidateImportWait(child.import);
+                    else if (child.tree != null) ValidateImportWait(child.tree);
+                }
+        }
+
         public void Compile(Program program, int priority, string layerName) {
+            Validate(program);
             if (program.root.statements.Count == 1 && program.root.statements[0] is TreeStatement tree) {
                 RegisterParameters();
                 aap.RootBlendTree.AddMotion(aap.GetTempParameter(1), BuildTree(tree, 0, out _));
+                return;
+            }
+            if (program.root.statements.Count == 1 && program.root.statements[0] is ImportStatement import) {
+                RegisterParameters();
+                aap.RootBlendTree.AddMotion(aap.GetTempParameter(1), BuildImport(import, 0, out _));
                 return;
             }
             var terminal = AddNode(new FlowNode());
@@ -330,14 +372,14 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             if (nextNode.isInlinedCondition) {
                 EmitInlinedCondition(node.state, nextNode, null,
                     node.exitDuration is { } duration ?
-                    node.motionDuration <= 0 ? 1 : Mathf.Clamp01(duration / node.motionDuration) :
+                    node.motionDuration <= 0 ? 1 : duration / node.motionDuration :
                     null
                 );
                 return;
             }
             AddTransition(node.state, nextNode.state,
                 node.exitDuration is not { } exitDuration || node.motionDuration <= 0 ? 1 :
-                Mathf.Clamp01(exitDuration / node.motionDuration),
+                exitDuration / node.motionDuration,
                 false
             );
         }
@@ -446,47 +488,37 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         void MakeConditions(ComparisonExpression comparison, bool negate, ClauseScope clauses) {
             var type = parameterTypes[comparison.parameter];
             var op = comparison.op;
-            if (negate) op = op switch {
-                "==" => "!=",
-                "!=" => "==",
-                "<" => ">=",
-                "<=" => ">",
-                ">" => "<=",
-                ">=" => "<",
-                _ => op,
-            };
+            if (negate) op ^= ComparisonOperator.Mask;
             if (comparison.value.type == ValueType.Boolean) {
-                if (op != "==" && op != "!=") Throw(comparison, "Boolean parameters only support == and !=.");
-                if (type == AnimatorControllerParameterType.Bool) {
-                    var isTrue = comparison.value.value != 0;
-                    var positive = op == "==" ? isTrue : !isTrue;
-                    AddClause(clauses, new AnimatorCondition {
-                        mode = positive ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot,
-                        parameter = comparison.parameter,
-                    });
-                } else {
-                    var booleanMode = op == "==" ? AnimatorConditionMode.Equals : AnimatorConditionMode.NotEqual;
-                    AddClause(clauses, MakeCondition(booleanMode, comparison.parameter, comparison.value.value));
-                }
+                if (op != ComparisonOperator.Equals && op != ComparisonOperator.NotEqual)
+                    Throw(comparison, "Boolean parameters only support == and !=.");
+                AddClause(clauses, type == AnimatorControllerParameterType.Bool ? new AnimatorCondition {
+                    mode = (comparison.value.value == 0) ^ (op == ComparisonOperator.Equals) ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot,
+                    parameter = comparison.parameter,
+                } : MakeCondition(
+                    op == ComparisonOperator.Equals ? AnimatorConditionMode.Equals : AnimatorConditionMode.NotEqual,
+                    comparison.parameter,
+                    comparison.value.value
+                ));
                 return;
             }
             if (type == AnimatorControllerParameterType.Bool)
                 Throw(comparison, "Numeric comparisons require an integer or float parameter.");
             var threshold = comparison.value.value;
-            if (op == "<=") {
-                threshold += type == AnimatorControllerParameterType.Int && comparison.value.type == ValueType.Integer ? 1 : 0.0001F;
-                op = "<";
-            } else if (op == ">=") {
-                threshold -= type == AnimatorControllerParameterType.Int && comparison.value.type == ValueType.Integer ? 1 : 0.0001F;
-                op = ">";
+            AnimatorConditionMode mode;
+            switch (op) {
+                case ComparisonOperator.NotEqual: mode = AnimatorConditionMode.NotEqual; break;
+                case ComparisonOperator.Equals: mode = AnimatorConditionMode.Equals; break;
+                case ComparisonOperator.Greater: mode = AnimatorConditionMode.Greater; break;
+                case ComparisonOperator.Less: mode = AnimatorConditionMode.Less; break;
+                case ComparisonOperator.EqualsOrGreater:
+                    threshold -= type == AnimatorControllerParameterType.Int && comparison.value.type == ValueType.Integer ? 1 : 0.0001F;
+                    goto case ComparisonOperator.Greater;
+                case ComparisonOperator.EqualsOrLess:
+                    threshold += type == AnimatorControllerParameterType.Int && comparison.value.type == ValueType.Integer ? 1 : 0.0001F;
+                    goto case ComparisonOperator.Less;
+                default: throw new InvalidOperationException("Unknown comparison operator.");
             }
-            var mode = op switch {
-                "==" => AnimatorConditionMode.Equals,
-                "!=" => AnimatorConditionMode.NotEqual,
-                "<" => AnimatorConditionMode.Less,
-                ">" => AnimatorConditionMode.Greater,
-                _ => throw new InvalidOperationException("Unknown comparison operator."),
-            };
             AddClause(clauses, MakeCondition(mode, comparison.parameter, threshold));
         }
 
@@ -497,7 +529,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 foreach (var action in node.actions)
                     if (action is AnimationStatement) {
                         hasAnimationActions = true;
-                    } else if (action is TreeStatement) treeCount++;
+                    } else if (action is TreeStatement || action is ImportStatement) treeCount++;
             var waitDuration = node.exitDuration ?? 0;
             if (treeCount == 0) {
                 if (!hasAnimationActions) return dummyClips.Get(Mathf.Max(waitDuration, 0));
@@ -514,8 +546,13 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 wrapper.AddMotion(aap.GetTempParameter(1), motion);
             }
             foreach (var action in node.actions) {
-                if (!(action is TreeStatement tree)) continue;
-                motion = BuildTree(tree, waitDuration, out var childDuration);
+                float childDuration;
+                if (action is TreeStatement tree)
+                    motion = BuildTree(tree, waitDuration, out childDuration);
+                else if (action is ImportStatement import)
+                    motion = BuildImport(import, waitDuration, out childDuration);
+                else
+                    continue;
                 duration = Mathf.Max(duration, childDuration);
                 if (compose) wrapper.AddMotion(aap.GetTempParameter(1), motion);
             }
@@ -539,6 +576,8 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 float childDuration;
                 if (child.tree != null) {
                     motion = BuildTree(child.tree, waitDuration, out childDuration);
+                } else if (child.import != null) {
+                    motion = BuildImport(child.import, waitDuration, out childDuration);
                 } else if (child.animations.Length == 0) {
                     childDuration = Mathf.Max(waitDuration, 1f / 60f);
                     motion = dummyClips.Get(childDuration);
@@ -553,6 +592,17 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 }
             }
             return tree;
+        }
+
+        VirtualMotion BuildImport(ImportStatement statement, float waitDuration, out float duration) {
+            duration = statement.duration;
+            if (waitDuration > 0 && duration <= 0)
+                Throw(statement, "Cannot wait on an imported motion with no duration.");
+            if (!motionMap.TryGetValue(statement.motion, out var virtualMotion)) {
+                virtualMotion = cloneContext.Clone(statement.motion);
+                motionMap.Add(statement.motion, virtualMotion);
+            }
+            return virtualMotion;
         }
 
         VirtualClip BuildClip(IEnumerable<ActionStatement> actions, float waitDuration, string name, out float motionDuration) {
@@ -715,6 +765,9 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                     case TreeStatement tree:
                         CollectTreeParameterTypes(tree);
                         break;
+                    case ImportStatement import:
+                        CollectImportParameters(import);
+                        break;
                 }
             }
         }
@@ -725,7 +778,14 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             foreach (var child in tree.children) {
                 if (child.parameter != null) AddParameterType(child.parameter, AnimatorControllerParameterType.Float);
                 if (child.tree != null) CollectTreeParameterTypes(child.tree);
+                else if (child.import != null) CollectImportParameters(child.import);
             }
+        }
+
+        void CollectImportParameters(ImportStatement import) {
+            import.motion = MotionImport.Resolve(import, references);
+            import.duration = MotionImport.Analyze(import, import.motion,
+                name => AddParameterType(name, AnimatorControllerParameterType.Float));
         }
 
         void CollectExpressionTypes(Expression expression) {
@@ -806,7 +866,8 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         void ResolveTreeTargets(TreeStatement tree) {
             foreach (var child in tree.children)
                 if (child.tree != null) ResolveTreeTargets(child.tree);
-                else foreach (var animation in child.animations) ResolveAnimationTarget(animation);
+                else if (child.animations != null)
+                    foreach (var animation in child.animations) ResolveAnimationTarget(animation);
         }
 
         void ResolveAnimationTarget(AnimationStatement animation) {
@@ -824,57 +885,6 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                         throw new ParseException(animation.row, animation.col, $"Could not resolve reference '{key.refName}'.");
                     key.resolvedRef = reference;
                 }
-            }
-        }
-
-        sealed class CurveTrack {
-            readonly SortedDictionary<float, Keyframe> keys = new();
-            public float LastValue;
-            public float LastTime;
-
-            public void Set(Keyframe key) => keys[key.time] = key;
-
-            public bool TryGet(float time, out Keyframe key) => keys.TryGetValue(time, out key);
-
-            public Keyframe[] CopyKeys() {
-                var result = new Keyframe[keys.Count];
-                keys.Values.CopyTo(result, 0);
-                return result;
-            }
-        }
-
-        sealed class PointerCurveTrack {
-            readonly SortedDictionary<float, ObjectReferenceKeyframe> keys = new();
-            public UnityObject LastValue;
-            public float LastTime;
-
-            public void Set(ObjectReferenceKeyframe key) => keys[key.time] = key;
-
-            public ObjectReferenceKeyframe[] CopyKeys() {
-                var result = new ObjectReferenceKeyframe[keys.Count];
-                keys.Values.CopyTo(result, 0);
-                return result;
-            }
-        }
-
-        readonly struct ClauseScope : IDisposable {
-            readonly List<List<AnimatorCondition>> clauses;
-            public int Count => clauses.Count;
-
-            public ClauseScope(out List<List<AnimatorCondition>> clauses) {
-                this.clauses = ListPool<List<AnimatorCondition>>.Get();
-                clauses = this.clauses;
-            }
-
-            public List<AnimatorCondition> Add() {
-                var clause = ListPool<AnimatorCondition>.Get();
-                clauses.Add(clause);
-                return clause;
-            }
-
-            public void Dispose() {
-                foreach (var clause in clauses) ListPool<AnimatorCondition>.Release(clause);
-                ListPool<List<AnimatorCondition>>.Release(clauses);
             }
         }
     }

@@ -36,6 +36,7 @@ namespace JLChnToZ.NDExtensions.Editors {
             readonly AnimatorSimplePatcher patcher;
             Program program;
             Dictionary<string, AnimatorControllerParameterType?> parameters;
+            Dictionary<string, UnityObject> refs;
             Dictionary<string, AnimatorControllerParameterType?>.Enumerator enumerator;
             ProvidedParameter providedParameter;
             byte state;
@@ -66,6 +67,8 @@ namespace JLChnToZ.NDExtensions.Editors {
                             }
                             program = Parser.Parse(patcher.code);
                             parameters = DictionaryPool<string, AnimatorControllerParameterType?>.Get();
+                            refs = DictionaryPool<string, UnityObject>.Get();
+                            patcher.GetAllReferences(refs);
                             CollectBlock(program.root);
                             enumerator = parameters.GetEnumerator();
                             state = 1;
@@ -108,6 +111,9 @@ namespace JLChnToZ.NDExtensions.Editors {
                         case TreeStatement tree:
                             CollectTree(tree);
                             break;
+                        case ImportStatement import:
+                            CollectImport(import);
+                            break;
                     }
             }
 
@@ -135,7 +141,13 @@ namespace JLChnToZ.NDExtensions.Editors {
                 foreach (var child in tree.children) {
                     AddParameter(child.parameter, AnimatorControllerParameterType.Float);
                     if (child.tree != null) CollectTree(child.tree);
+                    else if (child.import != null) CollectImport(child.import);
                 }
+            }
+
+            void CollectImport(ImportStatement import) {
+                var motion = MotionImport.Resolve(import, refs);
+                MotionImport.Analyze(import, motion, name => AddParameter(name, AnimatorControllerParameterType.Float));
             }
 
             public void Dispose() {
@@ -146,6 +158,10 @@ namespace JLChnToZ.NDExtensions.Editors {
                 if (parameters != null) {
                     DictionaryPool<string, AnimatorControllerParameterType?>.Release(parameters);
                     parameters = null;
+                }
+                if (refs != null) {
+                    DictionaryPool<string, UnityObject>.Release(refs);
+                    refs = null;
                 }
                 state = 2;
             }
@@ -271,22 +287,7 @@ namespace JLChnToZ.NDExtensions.Editors {
                                 writeDefaults = ac.DetermineWriteDefaults();
                             wds[patcher.layer] = writeDefaults;
 #endif
-                            using (DictionaryPool<string, UnityObject>.Get(out var refs)) {
-                                if (patcher.extraReferences != null)
-                                    foreach (var reference in patcher.extraReferences) {
-                                        var refName = reference.name;
-                                        if (string.IsNullOrEmpty(refName)) {
-                                            if (reference.reference == null) continue;
-                                            refName = reference.reference.name;
-                                        }
-                                        refs.TryAdd(refName, reference.reference);
-                                    }
-                                using var program = Parser.Parse(patcher.code);
-                                var aap = AAPContext.ForController(context, ac);
-                                using var ctx = new CompileContext(ac, refs, asc.ObjectPathRemapper, dummyClips, patcher.transform, writeDefaults, aap);
-                                ctx.Validate(program);
-                                ctx.Compile(program, patcher.priority, patcher.name);
-                            }
+                            CompilePatcher(context, asc, dummyClips, ac, patcher, writeDefaults);
                         } catch (Exception e) {
                             ErrorReport.ReportError(new NDMFWarn(e.Message, ErrorSeverity.Error));
                             Debug.LogException(e);
@@ -294,6 +295,26 @@ namespace JLChnToZ.NDExtensions.Editors {
                             UnityObject.DestroyImmediate(patcher);
                         }
                     }
+            }
+        }
+
+        static void CompilePatcher(
+            BuildContext context,
+            AnimatorServicesContext animatorServices,
+            DummyClips dummyClips,
+            VirtualAnimatorController controller,
+            AnimatorSimplePatcher patcher,
+            bool writeDefaults
+        ) {
+            using (DictionaryPool<string, UnityObject>.Get(out var references)) {
+                patcher.GetAllReferences(references);
+                using var program = Parser.Parse(patcher.code);
+                var aap = AAPContext.ForController(context, controller);
+                using var compiler = new CompileContext(
+                    controller, references, animatorServices.ObjectPathRemapper, dummyClips,
+                    patcher.transform, writeDefaults, aap, animatorServices.ControllerContext.CloneContext
+                );
+                compiler.Compile(program, patcher.priority, patcher.name);
             }
         }
     }

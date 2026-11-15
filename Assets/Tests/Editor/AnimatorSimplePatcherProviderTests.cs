@@ -1,8 +1,11 @@
 using System.Linq;
+using System.Text.RegularExpressions;
 using JLChnToZ.NDExtensions.Editors;
 using nadena.dev.ndmf;
 using NUnit.Framework;
+using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace JLChnToZ.NDExtensions.Tests {
@@ -52,9 +55,33 @@ namespace JLChnToZ.NDExtensions.Tests {
         }
 
         [Test]
+        public void ReportsNestedImportedTreeParametersAndPromotesTypes() {
+            var clip = new AnimationClip { name = "clip" };
+            var nested = new BlendTree { blendType = BlendTreeType.Simple1D, blendParameter = "Speed" };
+            var tree = new BlendTree { name = "Imported", blendType = BlendTreeType.Direct };
+            try {
+                nested.children = new[] { new ChildMotion { motion = clip, timeScale = 1 } };
+                tree.children = new[] { new ChildMotion { motion = nested, timeScale = 1, directBlendParameter = "Weight" } };
+                patcher.extraReferences = new[] { new AnimatorSimplePatcher.ExtraReference { reference = tree } };
+                patcher.code = "set Speed = true; tree (Other) { 0: import Imported; }";
+                var parameters = new AnimatorSimplePatcherProvider(patcher).GetSuppliedParameters().ToDictionary(p => p.OriginalName);
+                CollectionAssert.AreEquivalent(new[] { "Speed", "Weight", "Other" }, parameters.Keys);
+                Assert.AreEqual(AnimatorControllerParameterType.Float, parameters["Speed"].ParameterType);
+                Assert.AreEqual(AnimatorControllerParameterType.Float, parameters["Weight"].ParameterType);
+            } finally {
+                Object.DestroyImmediate(tree);
+                Object.DestroyImmediate(nested);
+                Object.DestroyImmediate(clip);
+            }
+        }
+
+        [Test]
         public void MalformedCodeReportsParseError() {
             patcher.code = "set Value =";
-            Assert.Throws<ParseException>(() => new AnimatorSimplePatcherProvider(patcher).GetSuppliedParameters().ToArray());
+            LogAssert.Expect(LogType.Exception, new Regex("ParseException:.*Expected a number"));
+            Assert.IsEmpty(new AnimatorSimplePatcherProvider(patcher).GetSuppliedParameters());
+            Assert.IsInstanceOf<ParseException>(patcher.lastException);
+            StringAssert.Contains("Expected a number", patcher.lastException.Message);
         }
     }
 }

@@ -29,14 +29,25 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
 
     sealed class ComparisonExpression : Expression {
         public readonly string parameter;
-        public readonly string op;
+        public readonly ComparisonOperator op;
         public readonly Value value;
 
-        public ComparisonExpression(int row, int col, string parameter, string op, Value value) : base(row, col) {
+        public ComparisonExpression(int row, int col, string parameter, ComparisonOperator op, Value value) : base(row, col) {
             this.parameter = parameter;
             this.op = op;
             this.value = value;
         }
+    }
+
+    public enum ComparisonOperator : byte {
+        None = 0,
+        Equals = 1,
+        Greater = 2,
+        EqualsOrGreater = Greater | Equals,
+        Less = 4,
+        EqualsOrLess = Less | Equals,
+        NotEqual = Greater | Less,
+        Mask = Equals | Greater | Less,
     }
 
     sealed class NotExpression : Expression {

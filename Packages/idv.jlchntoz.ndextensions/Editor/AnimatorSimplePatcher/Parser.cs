@@ -57,6 +57,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             if (IsName(token, "set")) return ParseSet();
             if (IsName(token, "goto")) return ParseGoto();
             if (IsTreeStart()) return ParseTree();
+            if (IsImportStart()) return ParseImport();
             if (IsName(token, "exit")) {
                 position++;
                 MatchSymbol(";");
@@ -71,6 +72,16 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             }
 
             return ParseAnimation();
+        }
+
+        bool IsImportStart() => IsName(Current, "import") && !PeekSymbol(1, ":") && !PeekSymbol(1, "(");
+
+        ImportStatement ParseImport() {
+            var start = Current;
+            position++;
+            var reference = ParseName("Expected a motion reference after 'import'.");
+            ExpectSymbol(";");
+            return new ImportStatement(start.row, start.col, reference.text);
         }
 
         bool IsTreeStart() {
@@ -132,9 +143,12 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 }
                 ExpectSymbol(":");
                 TreeStatement nested = null;
+                ImportStatement import = null;
                 AnimationStatement[] animations = null;
                 if (IsTreeStart()) {
                     nested = ParseTree();
+                } else if (IsImportStart()) {
+                    import = ParseImport();
                 } else {
                     ExpectSymbol("{");
                     var actions = new List<AnimationStatement>();
@@ -147,7 +161,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                     ExpectSymbol("}");
                     animations = actions.ToArray();
                 }
-                tree.children.Add(new TreeChild(parameter, threshold, coordinateY, nested, animations));
+                tree.children.Add(new TreeChild(parameter, threshold, coordinateY, nested, import, animations));
             }
             ExpectSymbol("}");
             return tree;
@@ -393,7 +407,15 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                 position++;
                 var value = ParseConditionValue();
                 if (value.type == ValueType.Random) Error(op, "Random values cannot be used in a condition.");
-                return new ComparisonExpression(parameter.row, parameter.col, parameter.text, op.text, value);
+                return new ComparisonExpression(parameter.row, parameter.col, parameter.text, op.text switch {
+                    "!=" => ComparisonOperator.NotEqual,
+                    "==" => ComparisonOperator.Equals,
+                    ">" => ComparisonOperator.Greater,
+                    ">=" => ComparisonOperator.EqualsOrGreater,
+                    "<" => ComparisonOperator.Less,
+                    "<=" => ComparisonOperator.EqualsOrLess,
+                    _ => throw new Exception($"Unknown comparison operator: {op.text}"),
+                }, value);
             }
             return new BooleanParameterExpression(parameter.row, parameter.col, parameter.text);
         }

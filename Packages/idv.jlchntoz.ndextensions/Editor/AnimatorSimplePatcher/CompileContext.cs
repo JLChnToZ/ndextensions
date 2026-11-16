@@ -251,15 +251,12 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             RegisterParameters();
             var layer = controller.AddLayer(new LayerPriority(priority), layerName);
             var machine = layer.StateMachine;
-            int index = 0;
             foreach (var node in nodes) {
                 if (node.isPassThroughGoto || node.isInlinedCondition || node.isTerminal && node != entryNode) continue;
                 var motion = BuildMotion(node);
-                node.state = machine.AddState(
-                    node.isExit ? "Exit" : node.isTerminal ? "End" : $"Instruction {index++}",
-                    motion,
-                    new Vector3(index * 180, 0, 0)
-                ).WriteDefaults(writeDefaults);
+                node.state = machine
+                    .AddState(node.ToString(), motion)
+                    .WriteDefaults(writeDefaults);
                 using (ListPool<SetStatement>.Get(out var assignments)) {
                     if (node.actions != null)
                         foreach (var action in node.actions)
@@ -274,6 +271,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
 
             foreach (var node in nodes) EmitTransitions(node);
             machine.DefaultState = entryNode.state;
+            StateGraphLayout.AutoLayout(machine);
         }
 
         FlowNode BuildBlock(Block block, FlowNode continuation) {
@@ -295,6 +293,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                         case LabelSegment label:
                             if (!labels.TryAdd(label.statement.name, current))
                                 throw new ParseException(label.statement.row, label.statement.col, $"Duplicate label '{label.statement.name}'.");
+                            current.name ??= label.statement.name;
                             break;
                         case GotoSegment jump:
                             var gotoNode = AddNode(new FlowNode(jump.statement, jump.actions));
@@ -533,7 +532,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             var waitDuration = node.exitDuration ?? 0;
             if (treeCount == 0) {
                 if (!hasAnimationActions) return dummyClips.Get(Mathf.Max(waitDuration, 0));
-                return BuildClip(node.actions, waitDuration, $"Instruction {node.row}/{node.col}", out node.motionDuration);
+                return BuildClip(node.actions, waitDuration, node.ToString(), out node.motionDuration);
             }
 
             var compose = treeCount + (hasAnimationActions ? 1 : 0) > 1;
@@ -541,7 +540,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             VirtualMotion motion = null;
             float duration = 0;
             if (hasAnimationActions) {
-                motion = BuildClip(node.actions, waitDuration, $"Instruction {node.row}/{node.col}", out var clipDuration);
+                motion = BuildClip(node.actions, waitDuration, node.ToString(), out var clipDuration);
                 duration = Mathf.Max(duration, clipDuration);
                 wrapper.AddMotion(aap.GetTempParameter(1), motion);
             }
@@ -561,7 +560,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         }
 
         VirtualMotion BuildTree(TreeStatement statement, float waitDuration, out float duration) {
-            var tree = VirtualBlendTree.Create($"Tree {statement.row}/{statement.col}");
+            var tree = VirtualBlendTree.Create(statement.ToString());
             switch (statement.kind) {
                 case TreeKind.Direct: tree.SetDirect(statement.normalized); break;
                 case TreeKind.OneDimensional: tree.Set1D(statement.parameterX); break;
@@ -582,7 +581,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
                     childDuration = Mathf.Max(waitDuration, 1f / 60f);
                     motion = dummyClips.Get(childDuration);
                 } else {
-                    motion = BuildClip(child.animations, waitDuration, $"Tree child {statement.row}/{statement.col}", out childDuration);
+                    motion = BuildClip(child.animations, waitDuration, statement.ToString(), out childDuration);
                 }
                 duration = Mathf.Max(duration, childDuration);
                 switch (statement.kind) {

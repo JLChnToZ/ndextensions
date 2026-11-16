@@ -75,6 +75,8 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             this.parameterY = parameterY;
             this.normalized = normalized;
         }
+
+        public override string ToString() => $"Tree ({row}, {col})";
     }
 
     enum TreeKind : byte {

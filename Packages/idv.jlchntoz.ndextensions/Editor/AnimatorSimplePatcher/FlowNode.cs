@@ -16,6 +16,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
         public readonly bool isTerminal;
         public VirtualState state;
         public float motionDuration;
+        public string name;
 
         public FlowNode() {
             isTerminal = true;
@@ -48,5 +49,7 @@ namespace JLChnToZ.NDExtensions.Editors.AnimatorSimplePatcherConverter {
             isExit = true;
             this.actions = actions;
         }
+
+        public override string ToString() => name ?? $"Node ({row}, {col})";
     }
 }

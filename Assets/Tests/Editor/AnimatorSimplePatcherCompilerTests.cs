@@ -210,6 +210,319 @@ namespace JLChnToZ.NDExtensions.Tests {
             Assert.IsTrue(state.Transitions.Single().IsExit);
         }
 
+        static VirtualStateTransition Connect(VirtualState from, VirtualState to) {
+            var transition = VirtualStateTransition.Create();
+            transition.SetDestination(to);
+            from.Transitions = from.Transitions.Add(transition);
+            return transition;
+        }
+
+        VirtualStateMachine Diamond() {
+            var machine = VirtualStateMachine.Create(cloneContext);
+            var end = machine.AddState("end");
+            var right = machine.AddState("right");
+            var left = machine.AddState("left");
+            var start = machine.AddState("start");
+            machine.DefaultState = start;
+            Connect(start, left);
+            Connect(start, right);
+            Connect(left, end);
+            Connect(right, end);
+            return machine;
+        }
+
+        static bool SegmentHitsRectangle(Vector2 a, Vector2 b, Vector3 position) {
+            float first = 0, last = 1;
+            foreach (var axis in new[] {
+                (a.x, b.x - a.x, position.x, position.x + 200),
+                (a.y, b.y - a.y, position.y, position.y + 60),
+            }) {
+                var (origin, delta, lower, upper) = axis;
+                if (Mathf.Abs(delta) < 0.0001f) {
+                    if (origin < lower || origin > upper) return false;
+                    continue;
+                }
+                float t1 = (lower - origin) / delta, t2 = (upper - origin) / delta;
+                first = Mathf.Max(first, Mathf.Min(t1, t2));
+                last = Mathf.Min(last, Mathf.Max(t1, t2));
+                if (first > last) return false;
+            }
+            return true;
+        }
+
+        static int StateEdgeCollisions(VirtualStateMachine machine, Vector3[] positions) {
+            int collisions = 0;
+            var states = machine.States;
+            for (int i = 0; i < states.Count; i++)
+                foreach (var transition in states[i].State.Transitions) {
+                    int target = -1;
+                    for (int j = 0; j < states.Count; j++)
+                        if (states[j].State == transition.DestinationState) target = j;
+                    if (target < 0 || target == i) continue;
+                    var a = (Vector2)positions[i] + new Vector2(100, 30);
+                    var b = (Vector2)positions[target] + new Vector2(100, 30);
+                    for (int j = 0; j < states.Count; j++)
+                        if (j != i && j != target && SegmentHitsRectangle(a, b, positions[j]))
+                            collisions++;
+                }
+            return collisions;
+        }
+
+        static float Side(Vector2 a, Vector2 b, Vector2 p) =>
+            (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+
+        static int StateEdgeCrossings(VirtualStateMachine machine, Vector3[] positions) {
+            var states = machine.States;
+            var edges = new HashSet<(int from, int to)>();
+            for (int i = 0; i < states.Count; i++)
+                foreach (var transition in states[i].State.Transitions)
+                    for (int j = 0; j < states.Count; j++)
+                        if (transition.DestinationState == states[j].State) edges.Add((i, j));
+            var list = edges.ToArray();
+            int crossings = 0;
+            for (int i = 0; i < list.Length; i++)
+                for (int j = i + 1; j < list.Length; j++) {
+                    var a = list[i];
+                    var b = list[j];
+                    if (a.from == b.from || a.from == b.to || a.to == b.from || a.to == b.to) continue;
+                    var p = (Vector2)positions[a.from];
+                    var q = (Vector2)positions[a.to];
+                    var r = (Vector2)positions[b.from];
+                    var s = (Vector2)positions[b.to];
+                    if (Side(p, q, r) * Side(p, q, s) < 0 && Side(r, s, p) * Side(r, s, q) < 0)
+                        crossings++;
+                }
+            return crossings;
+        }
+
+        static void AssertLayoutClear(VirtualStateMachine machine) {
+            var positions = machine.States.Select(child => child.Position)
+                .Concat(new[] { machine.EntryPosition, machine.ExitPosition, machine.AnyStatePosition }).ToArray();
+            for (int i = 0; i < positions.Length; i++) {
+                Assert.IsFalse(float.IsNaN(positions[i].x) || float.IsInfinity(positions[i].x));
+                Assert.IsFalse(float.IsNaN(positions[i].y) || float.IsInfinity(positions[i].y));
+                for (int j = 0; j < i; j++)
+                    Assert.IsTrue(Mathf.Abs(positions[i].x - positions[j].x) >= 200 ||
+                        Mathf.Abs(positions[i].y - positions[j].y) >= 60,
+                        $"Nodes {i} and {j} overlap: {positions[i]}, {positions[j]}");
+            }
+        }
+
+        [Test]
+        public void LayoutSeparatesDiamondBranchesAndIsDeterministic() {
+            var first = Diamond();
+            var second = Diamond();
+            var oldPositions = first.States.Select((_, i) => new Vector3((i + 1) * 180, 0, 0)).ToArray();
+            int oldCollisions = StateEdgeCollisions(first, oldPositions);
+
+            first.AutoLayout();
+            second.AutoLayout();
+
+            var positions = first.States.Select(child => child.Position).ToArray();
+            Assert.Greater(oldCollisions, 0);
+            Assert.Less(StateEdgeCollisions(first, positions), oldCollisions);
+            Assert.AreEqual(0, StateEdgeCollisions(first, positions));
+            CollectionAssert.AreEqual(positions, second.States.Select(child => child.Position).ToArray());
+            Assert.AreEqual(first.EntryPosition, second.EntryPosition);
+            Assert.AreEqual(first.ExitPosition, second.ExitPosition);
+            Assert.AreEqual(first.AnyStatePosition, second.AnyStatePosition);
+            AssertLayoutClear(first);
+        }
+
+        [Test]
+        public void LayoutReleasesPooledCollectionsAfterFailure() {
+            var invalid = Diamond();
+            invalid.States = invalid.States.Add(invalid.States[0]);
+            var pooled = UnityEngine.Pool.DictionaryPool<VirtualState, int>.Get();
+            UnityEngine.Pool.DictionaryPool<VirtualState, int>.Release(pooled);
+            bool failed = false;
+            try {
+                invalid.AutoLayout();
+            } catch (System.ArgumentException) {
+                failed = true;
+            }
+            Assert.IsTrue(failed);
+            using (UnityEngine.Pool.DictionaryPool<VirtualState, int>.Get(out var reused)) {
+                Assert.AreSame(pooled, reused);
+                Assert.IsEmpty(reused);
+            }
+
+            var valid = Diamond();
+            valid.AutoLayout();
+            AssertLayoutClear(valid);
+            var positions = new Vector3[valid.States.Count];
+            for (int i = 0; i < positions.Length; i++) positions[i] = valid.States[i].Position;
+            Assert.AreEqual(0, StateEdgeCollisions(valid, positions));
+        }
+
+        VirtualStateMachine CrossedBranches(bool duplicate) {
+            var machine = VirtualStateMachine.Create(cloneContext);
+            var start = machine.AddState("start");
+            var left = machine.AddState("left");
+            var right = machine.AddState("right");
+            var upper = machine.AddState("upper");
+            var lower = machine.AddState("lower");
+            var end = machine.AddState("end");
+            machine.DefaultState = start;
+            Connect(start, left);
+            Connect(start, right);
+            Connect(left, lower);
+            if (duplicate) Connect(left, lower);
+            Connect(right, upper);
+            Connect(upper, end);
+            Connect(lower, end);
+            return machine;
+        }
+
+        [Test]
+        public void LayoutReducesCrossingsAndIgnoresDuplicateAlternatives() {
+            var machine = CrossedBranches(false);
+            var duplicate = CrossedBranches(true);
+            var naive = new[] {
+                new Vector3(0, 55), new Vector3(260, 0), new Vector3(260, 110),
+                new Vector3(520, 0), new Vector3(520, 110), new Vector3(780, 55),
+            };
+            Assert.Greater(StateEdgeCrossings(machine, naive), 0);
+
+            machine.AutoLayout();
+            duplicate.AutoLayout();
+
+            var positions = machine.States.Select(child => child.Position).ToArray();
+            Assert.AreEqual(0, StateEdgeCrossings(machine, positions));
+            CollectionAssert.AreEqual(positions, duplicate.States.Select(child => child.Position).ToArray());
+            AssertLayoutClear(machine);
+        }
+
+        [TestCase(3, true, false)]
+        [TestCase(4, true, false)]
+        [TestCase(3, false, false)]
+        [TestCase(3, true, true)]
+        public void LayoutSeparatesStatesWhenLongTransitionsCrossThem(int count, bool loop, bool bidirectional) {
+            var machine = VirtualStateMachine.Create(cloneContext);
+            var states = new VirtualState[count];
+            for (int i = 0; i < count; i++) states[i] = machine.AddState($"state {i}");
+            machine.DefaultState = states[0];
+            for (int i = 1; i < count; i++) Connect(states[i - 1], states[i]);
+            if (loop) Connect(states[count - 1], states[0]);
+            else Connect(states[0], states[count - 1]);
+            if (bidirectional) {
+                for (int i = 1; i < count; i++) Connect(states[i], states[i - 1]);
+                Connect(states[0], states[count - 1]);
+            }
+            var straight = new Vector3[count];
+            for (int i = 0; i < count; i++) straight[i] = new Vector3(i * 260, 0, 0);
+            Assert.Greater(StateEdgeCollisions(machine, straight), 0);
+
+            machine.AutoLayout();
+
+            var positions = machine.States.Select(child => child.Position).ToArray();
+            Assert.AreEqual(0, StateEdgeCollisions(machine, positions));
+            AssertLayoutClear(machine);
+            var transitions = states.SelectMany(state => state.Transitions).ToArray();
+            machine.AutoLayout();
+            CollectionAssert.AreEqual(positions, machine.States.Select(child => child.Position).ToArray());
+            CollectionAssert.AreEqual(transitions, states.SelectMany(state => state.Transitions).ToArray());
+            Assert.AreSame(states[0], machine.DefaultState);
+        }
+
+        [Test]
+        public void LayoutChoosesDirectionFromGraphShape() {
+            var linear = VirtualStateMachine.Create(cloneContext);
+            var chain = Enumerable.Range(0, 8).Select(i => linear.AddState($"chain {i}")).ToArray();
+            linear.DefaultState = chain[0];
+            for (int i = 1; i < chain.Length; i++) Connect(chain[i - 1], chain[i]);
+            linear.AutoLayout();
+            var linearEntry = linear.States[0].Position;
+            Assert.Less(linear.EntryPosition.y, linearEntry.y);
+            Assert.AreEqual(linearEntry.x, linear.EntryPosition.x);
+            Assert.IsTrue(linear.States.All(child => child.Position.x == linearEntry.x));
+
+            var isolated = VirtualStateMachine.Create(cloneContext);
+            var start = isolated.AddState("start");
+            isolated.DefaultState = start;
+            for (int i = 0; i < 12; i++) isolated.AddState($"isolated {i}");
+            isolated.AutoLayout();
+            var isolatedEntry = isolated.States[0].Position;
+            Assert.Less(isolated.EntryPosition.x, isolatedEntry.x);
+            Assert.AreEqual(isolatedEntry.y, isolated.EntryPosition.y);
+            AssertLayoutClear(isolated);
+        }
+
+        [Test]
+        public void LayoutPositionsSurviveControllerCommit() {
+            var machine = Diamond();
+            machine.AutoLayout();
+            var layer = controller.AddLayer(new LayerPriority(0), "layout");
+            layer.StateMachine = machine;
+            var animator = root.AddComponent<Animator>();
+            var build = new BuildContext(root, null, isClone: true);
+            var service = new VirtualControllerContext();
+            service.OnActivate(build);
+            service.Controllers[animator] = controller;
+            service.OnDeactivate(build);
+
+            var committed = (AnimatorController)animator.runtimeAnimatorController;
+            var actual = committed.layers.Single().stateMachine;
+            CollectionAssert.AreEqual(machine.States.Select(child => child.Position).ToArray(),
+                actual.states.Select(child => child.position).ToArray());
+            Assert.AreEqual(machine.EntryPosition, actual.entryPosition);
+            Assert.AreEqual(machine.ExitPosition, actual.exitPosition);
+            Assert.AreEqual(machine.AnyStatePosition, actual.anyStatePosition);
+            Assert.AreEqual(machine.DefaultState.Name, actual.defaultState.name);
+            foreach (var child in actual.states) {
+                assets.AddRange(child.state.transitions);
+                assets.Add(child.state);
+            }
+            assets.Add(actual);
+            assets.Add(committed);
+        }
+
+        [Test]
+        public void LayoutHandlesCompiledLoopsBranchesAndUnreachableStates() {
+            var machine = Compile(@"start:
+                this (Animator):m_Speed -> 1;
+                if (A && B) { this (Animator):m_Speed -> 2; wait 1s; goto start; }
+                else { this (Animator):m_Speed -> 3; exit; }
+                unused:
+                this (Animator):m_Speed -> 4; exit;").StateMachine;
+            var before = machine.States.Select(child => child.Position).ToArray();
+            var transitions = machine.States.SelectMany(child => child.State.Transitions).ToArray();
+            var defaultState = machine.DefaultState;
+
+            Assert.IsTrue(transitions.Any(transition => transition.DestinationState == defaultState));
+            Assert.IsTrue(transitions.Any(transition => transition.IsExit));
+            Assert.IsTrue(transitions.Any(transition => transition.Conditions.Count > 1));
+            AssertLayoutClear(machine);
+            machine.AutoLayout();
+            CollectionAssert.AreEqual(before, machine.States.Select(child => child.Position).ToArray());
+            CollectionAssert.AreEqual(transitions, machine.States.SelectMany(child => child.State.Transitions).ToArray());
+            Assert.AreSame(defaultState, machine.DefaultState);
+        }
+
+        [Test]
+        public void LayoutHandlesSingleStateAndLargeCycles() {
+            var single = Compile("this (Animator):m_Speed -> 1;").StateMachine;
+            Assert.AreEqual(1, single.States.Count);
+            AssertLayoutClear(single);
+
+            var machine = VirtualStateMachine.Create(cloneContext);
+            var states = Enumerable.Range(0, 300).Select(i => machine.AddState($"state {i}")).ToArray();
+            machine.DefaultState = states[0];
+            for (int i = 0; i < states.Length; i++) Connect(states[i], states[(i + 1) % states.Length]);
+            Connect(states[0], states[1]);
+            Connect(states[0], states[0]);
+            var straight = new Vector3[states.Length];
+            for (int i = 0; i < straight.Length; i++) straight[i] = new Vector3(0, i * 110, 0);
+            int straightCollisions = StateEdgeCollisions(machine, straight);
+            machine.AutoLayout();
+            var positions = machine.States.Select(child => child.Position).ToArray();
+            AssertLayoutClear(machine);
+            Assert.Less(StateEdgeCollisions(machine, positions), straightCollisions);
+            machine.AutoLayout();
+            CollectionAssert.AreEqual(positions, machine.States.Select(child => child.Position).ToArray());
+            Assert.AreEqual(3, states[0].Transitions.Count);
+        }
+
         [TestCase("goto missing;")]
         [TestCase("duplicate:\nexit;\nduplicate:\nexit;")]
         public void RejectsInvalidLabels(string source) {

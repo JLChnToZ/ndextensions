@@ -523,6 +523,399 @@ namespace JLChnToZ.NDExtensions.Tests {
             Assert.AreEqual(3, states[0].Transitions.Count);
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LayoutProjectsNestedConnectionsAndOptionallyLayoutsContents(bool layoutContents) {
+            var machine = VirtualStateMachine.Create(cloneContext);
+            var start = machine.AddState("start");
+            var end = machine.AddState("end");
+            machine.DefaultState = start;
+            var sub = machine.AddStateMachine("sub", new Vector3(-500, -500));
+            var innerStart = sub.AddState("inner start", position: new Vector3(-300, -300));
+            var nested = sub.AddStateMachine("nested", new Vector3(-400, -400));
+            var nestedState = nested.AddState("nested state", position: new Vector3(-200, -200));
+            sub.DefaultState = innerStart;
+            nested.DefaultState = nestedState;
+            Connect(start, nestedState);
+            innerStart.ConnectTo(nested);
+            sub.ConnectTo(end, machine);
+            var originalInner = sub.States[0].Position;
+            var originalNested = sub.StateMachines[0].Position;
+            var originalNestedState = nested.States[0].Position;
+
+            machine.AutoLayout(layoutContents);
+
+            var startPosition = machine.States[0].Position;
+            var subPosition = machine.StateMachines[0].Position;
+            var endPosition = machine.States[1].Position;
+            Assert.AreNotEqual(new Vector3(-500, -500), subPosition);
+            Assert.IsTrue(startPosition.x < subPosition.x && subPosition.x < endPosition.x ||
+                startPosition.y < subPosition.y && subPosition.y < endPosition.y);
+            if (layoutContents) {
+                Assert.AreNotEqual(originalInner, sub.States[0].Position);
+                Assert.AreNotEqual(originalNested, sub.StateMachines[0].Position);
+                Assert.AreNotEqual(originalNestedState, nested.States[0].Position);
+            } else {
+                Assert.AreEqual(originalInner, sub.States[0].Position);
+                Assert.AreEqual(originalNested, sub.StateMachines[0].Position);
+                Assert.AreEqual(originalNestedState, nested.States[0].Position);
+            }
+            var positions = machine.States.Select(child => child.Position).ToArray();
+            machine.AutoLayout(layoutContents);
+            CollectionAssert.AreEqual(positions, machine.States.Select(child => child.Position).ToArray());
+            Assert.AreEqual(subPosition, machine.StateMachines[0].Position);
+        }
+
+        [Test]
+        public void LayoutProjectsNestedSourcesAndStateMachineDestinations() {
+            var machine = VirtualStateMachine.Create(cloneContext);
+            var start = machine.AddState("start");
+            machine.DefaultState = start;
+            var first = machine.AddStateMachine("first");
+            var second = machine.AddStateMachine("second");
+            var nested = first.AddStateMachine("nested");
+            var inner = nested.AddState("inner");
+            start.ConnectTo(first);
+            inner.ConnectTo(second);
+
+            machine.AutoLayout();
+
+            var a = machine.States[0].Position;
+            var b = machine.StateMachines[0].Position;
+            var c = machine.StateMachines[1].Position;
+            Assert.IsTrue(a.x < b.x && b.x < c.x || a.y < b.y && b.y < c.y);
+        }
+
+        [Test]
+        public void LayoutHandlesMachinesWithoutDirectStates() {
+            var machine = VirtualStateMachine.Create(cloneContext);
+            var first = machine.AddStateMachine("first", new Vector3(-100, -100));
+            var second = machine.AddStateMachine("second", new Vector3(-200, -200));
+            second.ConnectTo(first, machine);
+            var entry = VirtualTransition.Create();
+            entry.SetDestination(second);
+            machine.EntryTransitions = machine.EntryTransitions.Add(entry);
+
+            machine.AutoLayout(true);
+
+            var a = machine.StateMachines[0].Position;
+            var b = machine.StateMachines[1].Position;
+            Assert.AreNotEqual(new Vector3(-100, -100), a);
+            Assert.AreNotEqual(new Vector3(-200, -200), b);
+            Assert.IsTrue(b.x < a.x || b.y < a.y);
+            Assert.IsTrue(machine.EntryPosition.x < b.x && machine.EntryPosition.y == b.y ||
+                machine.EntryPosition.y < b.y && machine.EntryPosition.x == b.x);
+            Assert.AreEqual(entry, machine.EntryTransitions.Single());
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void LayoutProjectsTransitionsAcrossEveryParentBoundary(bool incoming) {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var outside = rootMachine.AddState("outside");
+            rootMachine.DefaultState = outside;
+            var child = rootMachine.AddStateMachine("child");
+            var nested = child.AddStateMachine("nested");
+            var inside = nested.AddState("inside");
+            nested.DefaultState = inside;
+            var originalParentPosition = new Vector3(-600, -600);
+            child.ParentStateMachinePosition = originalParentPosition;
+            nested.ParentStateMachinePosition = originalParentPosition;
+            if (incoming) Connect(outside, inside);
+            else Connect(inside, outside);
+
+            rootMachine.AutoLayout(true);
+
+            var rootPosition = rootMachine.States[0].Position;
+            var childPosition = rootMachine.StateMachines[0].Position;
+            var nestedPosition = child.StateMachines[0].Position;
+            var statePosition = nested.States[0].Position;
+            Assert.AreNotEqual(originalParentPosition, child.ParentStateMachinePosition);
+            Assert.AreNotEqual(originalParentPosition, nested.ParentStateMachinePosition);
+            if (incoming) {
+                AssertLayoutBefore(rootPosition, childPosition);
+                AssertLayoutBefore(child.ParentStateMachinePosition, nestedPosition);
+                AssertLayoutBefore(nested.ParentStateMachinePosition, statePosition);
+            } else {
+                AssertLayoutBefore(childPosition, rootPosition);
+                AssertLayoutBefore(nestedPosition, child.ParentStateMachinePosition);
+                AssertLayoutBefore(statePosition, nested.ParentStateMachinePosition);
+            }
+        }
+
+        static void AssertLayoutBefore(Vector3 source, Vector3 target) =>
+            Assert.IsTrue(source.x < target.x || source.y < target.y,
+                $"Expected {source} before {target}.");
+
+        [Test]
+        public void LayoutProjectsParentStateMachineTransitionsIntoChildren() {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var source = rootMachine.AddStateMachine("source");
+            var child = rootMachine.AddStateMachine("child");
+            var inner = child.AddState("inner");
+            child.DefaultState = inner;
+            var originalParentPosition = new Vector3(-600, -600);
+            child.ParentStateMachinePosition = originalParentPosition;
+            source.ConnectTo(inner, rootMachine);
+
+            rootMachine.AutoLayout(true);
+
+            AssertLayoutBefore(rootMachine.StateMachines[0].Position, rootMachine.StateMachines[1].Position);
+            Assert.AreNotEqual(originalParentPosition, child.ParentStateMachinePosition);
+            AssertLayoutBefore(child.ParentStateMachinePosition, child.States[0].Position);
+        }
+
+        [Test]
+        public void LayoutProjectsChildMachineTransitionsToAnAncestor() {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var outside = rootMachine.AddState("outside");
+            rootMachine.DefaultState = outside;
+            var child = rootMachine.AddStateMachine("child");
+            var nested = child.AddStateMachine("nested");
+            var originalParentPosition = new Vector3(-600, -600);
+            child.ParentStateMachinePosition = originalParentPosition;
+            nested.ConnectTo(outside, child);
+
+            rootMachine.AutoLayout(true);
+
+            AssertLayoutBefore(rootMachine.StateMachines[0].Position, rootMachine.States[0].Position);
+            Assert.AreNotEqual(originalParentPosition, child.ParentStateMachinePosition);
+            AssertLayoutBefore(child.StateMachines[0].Position, child.ParentStateMachinePosition);
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void LayoutProjectsConnectionsBetweenDeepSiblingBranches(bool reverse, bool machineSource) {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var common = rootMachine.AddStateMachine("common");
+            var left = new VirtualStateMachine[4];
+            var right = new VirtualStateMachine[4];
+            var originalParentPosition = new Vector3(-600, -600);
+            common.ParentStateMachinePosition = originalParentPosition;
+            left[0] = common.AddStateMachine("left");
+            right[0] = common.AddStateMachine("right");
+            for (int i = 0; i < left.Length; i++) {
+                left[i].ParentStateMachinePosition = originalParentPosition;
+                right[i].ParentStateMachinePosition = originalParentPosition;
+                if (i + 1 == left.Length) continue;
+                left[i + 1] = left[i].AddStateMachine($"left {i}");
+                right[i + 1] = right[i].AddStateMachine($"right {i}");
+            }
+            var source = reverse ? right : left;
+            var target = reverse ? left : right;
+            var targetState = target[3].AddState("target");
+            target[3].DefaultState = targetState;
+            VirtualState sourceState = null;
+            if (machineSource)
+                source[3].ConnectTo(targetState, source[2]);
+            else {
+                sourceState = source[3].AddState("source");
+                source[3].DefaultState = sourceState;
+                Connect(sourceState, targetState);
+            }
+
+            rootMachine.AutoLayout(true);
+
+            var sourceNode = common.StateMachines[reverse ? 1 : 0].Position;
+            var targetNode = common.StateMachines[reverse ? 0 : 1].Position;
+            AssertRankBefore(common, sourceNode, targetNode);
+            Assert.AreEqual(originalParentPosition, common.ParentStateMachinePosition);
+            for (int i = 0; i < source.Length - 1; i++) {
+                Assert.AreNotEqual(originalParentPosition, source[i].ParentStateMachinePosition);
+                AssertRankBefore(source[i], source[i].StateMachines[0].Position, source[i].ParentStateMachinePosition);
+                Assert.AreNotEqual(originalParentPosition, target[i].ParentStateMachinePosition);
+                AssertRankBefore(target[i], target[i].ParentStateMachinePosition, target[i].StateMachines[0].Position);
+            }
+            Assert.AreNotEqual(originalParentPosition, target[3].ParentStateMachinePosition);
+            AssertRankBefore(target[3], target[3].ParentStateMachinePosition, target[3].States[0].Position);
+            if (machineSource)
+                Assert.AreEqual(originalParentPosition, source[3].ParentStateMachinePosition);
+            else {
+                Assert.AreSame(sourceState, source[3].DefaultState);
+                AssertRankBefore(source[3], source[3].States[0].Position, source[3].ParentStateMachinePosition);
+            }
+        }
+
+        static void AssertRankBefore(VirtualStateMachine machine, Vector3 source, Vector3 target) {
+            if (machine.EntryPosition.x == 0)
+                Assert.Less(source.x, target.x);
+            else
+                Assert.Less(source.y, target.y);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LayoutProjectsAncestorStateToNonDefaultDescendantState(bool nested) {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var ancestor = rootMachine.AddStateMachine("ancestor", new Vector3(-500, -500));
+            var source = ancestor.AddState("source", position: new Vector3(-400, -400));
+            ancestor.DefaultState = source;
+            var child = ancestor.AddStateMachine("child", new Vector3(-300, -300));
+            var grandchild = child.AddStateMachine("grandchild", new Vector3(-200, -200));
+            var defaultState = grandchild.AddState("default", position: new Vector3(-100, -100));
+            var target = grandchild.AddState("target", position: new Vector3(-150, -150));
+            grandchild.DefaultState = defaultState;
+            var transition = Connect(source, target);
+            var oldParentPosition = new Vector3(-600, -600);
+            child.ParentStateMachinePosition = oldParentPosition;
+            grandchild.ParentStateMachinePosition = oldParentPosition;
+
+            rootMachine.AutoLayout(nested);
+
+            Assert.AreNotEqual(new Vector3(-500, -500), rootMachine.StateMachines[0].Position);
+            Assert.AreSame(target, transition.DestinationState);
+            Assert.AreSame(defaultState, grandchild.DefaultState);
+            if (!nested) {
+                Assert.AreEqual(new Vector3(-400, -400), ancestor.States[0].Position);
+                Assert.AreEqual(new Vector3(-300, -300), ancestor.StateMachines[0].Position);
+                Assert.AreEqual(new Vector3(-200, -200), child.StateMachines[0].Position);
+                Assert.AreEqual(new Vector3(-150, -150), grandchild.States[1].Position);
+                Assert.AreEqual(oldParentPosition, child.ParentStateMachinePosition);
+                Assert.AreEqual(oldParentPosition, grandchild.ParentStateMachinePosition);
+            } else {
+                AssertRankBefore(ancestor, ancestor.States[0].Position, ancestor.StateMachines[0].Position);
+                Assert.AreNotEqual(oldParentPosition, child.ParentStateMachinePosition);
+                AssertRankBefore(child, child.ParentStateMachinePosition, child.StateMachines[0].Position);
+                Assert.AreNotEqual(oldParentPosition, grandchild.ParentStateMachinePosition);
+                AssertRankBefore(grandchild, grandchild.ParentStateMachinePosition, grandchild.States[1].Position);
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LayoutProjectsDeepStateToMachineInAnotherBranch(bool reverse) {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var common = rootMachine.AddStateMachine("common");
+            var left = common.AddStateMachine("left");
+            var right = common.AddStateMachine("right");
+            var sourceBranch = reverse ? right : left;
+            var targetBranch = reverse ? left : right;
+            var sourceChild = sourceBranch.AddStateMachine("source child");
+            var source = sourceChild.AddState("source");
+            sourceChild.DefaultState = source;
+            var targetChild = targetBranch.AddStateMachine("target child");
+            var target = targetChild.AddStateMachine("target");
+            var defaultState = target.AddState("default");
+            target.DefaultState = defaultState;
+            var oldParentPosition = new Vector3(-600, -600);
+            sourceBranch.ParentStateMachinePosition = oldParentPosition;
+            sourceChild.ParentStateMachinePosition = oldParentPosition;
+            targetBranch.ParentStateMachinePosition = oldParentPosition;
+            targetChild.ParentStateMachinePosition = oldParentPosition;
+            target.ParentStateMachinePosition = oldParentPosition;
+            var transition = source.ConnectTo(target);
+
+            rootMachine.AutoLayout(true);
+
+            AssertRankBefore(common, common.StateMachines[reverse ? 1 : 0].Position,
+                common.StateMachines[reverse ? 0 : 1].Position);
+            Assert.AreNotEqual(oldParentPosition, sourceBranch.ParentStateMachinePosition);
+            AssertRankBefore(sourceBranch, sourceBranch.StateMachines[0].Position, sourceBranch.ParentStateMachinePosition);
+            Assert.AreNotEqual(oldParentPosition, sourceChild.ParentStateMachinePosition);
+            AssertRankBefore(sourceChild, sourceChild.States[0].Position, sourceChild.ParentStateMachinePosition);
+            Assert.AreNotEqual(oldParentPosition, targetBranch.ParentStateMachinePosition);
+            AssertRankBefore(targetBranch, targetBranch.ParentStateMachinePosition, targetBranch.StateMachines[0].Position);
+            Assert.AreNotEqual(oldParentPosition, targetChild.ParentStateMachinePosition);
+            AssertRankBefore(targetChild, targetChild.ParentStateMachinePosition, targetChild.StateMachines[0].Position);
+            Assert.AreEqual(oldParentPosition, target.ParentStateMachinePosition);
+            Assert.AreNotEqual(Vector3.zero, target.States[0].Position);
+            Assert.AreSame(target, transition.DestinationStateMachine);
+            Assert.AreSame(defaultState, target.DefaultState);
+        }
+
+        [Test]
+        public void LayoutWithoutNestedContentsDoesNotMoveParentNode() {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var outside = rootMachine.AddState("outside");
+            rootMachine.DefaultState = outside;
+            var child = rootMachine.AddStateMachine("child", new Vector3(-500, -500));
+            var inside = child.AddState("inside");
+            child.ParentStateMachinePosition = new Vector3(-600, -600);
+            Connect(outside, inside);
+
+            rootMachine.AutoLayout();
+
+            Assert.AreNotEqual(new Vector3(-500, -500), rootMachine.StateMachines[0].Position);
+            Assert.AreEqual(new Vector3(-600, -600), child.ParentStateMachinePosition);
+        }
+
+        [Test]
+        public void LayoutKeepsExitTransitionsSeparateFromParentConnections() {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var child = rootMachine.AddStateMachine("child");
+            var inside = child.AddState("inside");
+            child.DefaultState = inside;
+            var exit = VirtualStateTransition.Create();
+            exit.SetExitDestination();
+            inside.Transitions = inside.Transitions.Add(exit);
+            var originalParentPosition = new Vector3(-600, -600);
+            child.ParentStateMachinePosition = originalParentPosition;
+            var machineExit = VirtualTransition.Create();
+            machineExit.SetExitDestination();
+            rootMachine.StateMachineTransitions = rootMachine.StateMachineTransitions.Add(child,
+                System.Collections.Immutable.ImmutableList.Create(machineExit));
+
+            rootMachine.AutoLayout(true);
+
+            Assert.AreEqual(originalParentPosition, child.ParentStateMachinePosition);
+            Assert.AreNotEqual(child.States[0].Position, child.ExitPosition);
+            Assert.AreNotEqual(rootMachine.StateMachines[0].Position, rootMachine.ExitPosition);
+            Assert.IsTrue(exit.IsExit);
+            Assert.IsTrue(machineExit.IsExit);
+        }
+
+        [Test]
+        public void LayoutHandlesEmptyMachinesWithAndWithoutExternalTransitions() {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var outside = rootMachine.AddState("outside");
+            rootMachine.DefaultState = outside;
+            var empty = rootMachine.AddStateMachine("empty", new Vector3(-500, -500));
+            var isolated = rootMachine.AddStateMachine("isolated", new Vector3(-400, -400));
+            var oldParentPosition = new Vector3(-600, -600);
+            empty.ParentStateMachinePosition = oldParentPosition;
+            isolated.ParentStateMachinePosition = oldParentPosition;
+            var oldEntryPosition = isolated.EntryPosition;
+            var entry = VirtualTransition.Create();
+            entry.SetDestination(outside);
+            empty.EntryTransitions = empty.EntryTransitions.Add(entry);
+            outside.ConnectTo(empty);
+
+            rootMachine.AutoLayout(true);
+
+            Assert.AreNotEqual(new Vector3(-500, -500), rootMachine.StateMachines[0].Position);
+            Assert.AreNotEqual(oldParentPosition, empty.ParentStateMachinePosition);
+            Assert.AreEqual(oldParentPosition, isolated.ParentStateMachinePosition);
+            Assert.AreEqual(oldEntryPosition, isolated.EntryPosition);
+            Assert.IsEmpty(empty.States);
+            Assert.IsEmpty(empty.StateMachines);
+        }
+
+        [Test]
+        public void LayoutTraversesDeepNestedMachinesWithoutRecursion() {
+            var rootMachine = VirtualStateMachine.Create(cloneContext);
+            var current = rootMachine;
+            for (int i = 0; i < 400; i++)
+                current = current.AddStateMachine($"level {i}", new Vector3(-100, -100));
+            var state = current.AddState("last", position: new Vector3(-100, -100));
+            current.DefaultState = state;
+
+            rootMachine.AutoLayout(true);
+
+            Assert.AreNotEqual(new Vector3(-100, -100), current.States[0].Position);
+        }
+
+        [Test]
+        public void LayoutRejectsCyclicMachineHierarchies() {
+            var machine = VirtualStateMachine.Create(cloneContext);
+            machine.StateMachines = machine.StateMachines.Add(new VirtualStateMachine.VirtualChildStateMachine {
+                StateMachine = machine,
+            });
+
+            Assert.Throws<System.ArgumentException>(() => machine.AutoLayout(true));
+        }
+
         [TestCase("goto missing;")]
         [TestCase("duplicate:\nexit;\nduplicate:\nexit;")]
         public void RejectsInvalidLabels(string source) {

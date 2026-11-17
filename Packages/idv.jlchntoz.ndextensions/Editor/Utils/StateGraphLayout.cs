@@ -11,38 +11,101 @@ namespace JLChnToZ.NDExtensions.Editors {
         const int sweeps = 4;
         const int refinementLimit = 128;
 
-        public static void AutoLayout(this VirtualStateMachine machine) {
+        public static void AutoLayout(this VirtualStateMachine machine, bool nested = false) {
+            using (ListPool<VirtualStateMachine>.Get(out var pending))
+            using (ListPool<VirtualStateMachine>.Get(out var hierarchy))
+            using (HashSetPool<VirtualStateMachine>.Get(out var visited)) {
+                pending.Add(machine);
+                while (pending.Count > 0) {
+                    int last = pending.Count - 1;
+                    var current = pending[last];
+                    pending.RemoveAt(last);
+                    if (!visited.Add(current))
+                        throw new System.ArgumentException("A state machine appears more than once in the hierarchy.");
+                    hierarchy.Add(current);
+                    foreach (var child in current.StateMachines) pending.Add(child.StateMachine);
+                }
+                LayoutMachine(machine, hierarchy);
+                if (nested)
+                    for (int i = 1; i < hierarchy.Count; i++)
+                        LayoutMachine(hierarchy[i], hierarchy);
+            }
+        }
+
+        static void LayoutMachine(VirtualStateMachine machine, List<VirtualStateMachine> hierarchy) {
             var states = machine.States;
-            int count = states.Count;
-            if (count == 0) return;
+            var machines = machine.StateMachines;
+            int nodeCount = states.Count + machines.Count;
 
             using (DictionaryPool<VirtualState, int>.Get(out var indices))
+            using (DictionaryPool<VirtualStateMachine, int>.Get(out var machineIndices))
             using (ListPool<Edge>.Get(out var edges))
             using (HashSetPool<(int, int)>.Get(out var uniqueEdges))
-            using (ListPool<SortedDictionary<int, List<int>>>.Get(out var levels)) {
+            using (ListPool<SortedDictionary<int, List<int>>>.Get(out var levels))
+            using (ListPool<VirtualStateMachine>.Get(out var pending)) {
                 List<int>[] outgoing = null, incoming = null;
                 List<List<int>> groups = null;
                 try {
-                    for (int i = 0; i < count; i++) indices.Add(states[i].State, i);
-                    int entry = indices[machine.DefaultState], exit = count, entryNode = count + 1, any = count + 2;
-                    outgoing = NewAdjacency(count);
-                    incoming = NewAdjacency(count);
-                    for (int i = 0; i < count; i++) {
-                        foreach (var transition in states[i].State.Transitions) {
-                            int target;
-                            if (transition.IsExit) target = exit;
-                            else if (transition.DestinationState != null &&
-                                indices.TryGetValue(transition.DestinationState, out var index))
-                                target = index;
-                            else continue;
-                            if (!uniqueEdges.Add((i, target))) continue;
-                            edges.Add(new Edge(i, target));
-                            if (target == exit || target == i) continue;
-                            outgoing[i].Add(target);
-                            incoming[target].Add(i);
+                    for (int i = 0; i < states.Count; i++) indices.Add(states[i].State, i);
+                    for (int i = 0; i < machines.Count; i++) {
+                        int index = states.Count + i;
+                        pending.Add(machines[i].StateMachine);
+                        while (pending.Count > 0) {
+                            int last = pending.Count - 1;
+                            var child = pending[last];
+                            pending.RemoveAt(last);
+                            machineIndices.Add(child, index);
+                            foreach (var state in child.States) indices.Add(state.State, index);
+                            foreach (var nested in child.StateMachines) pending.Add(nested.StateMachine);
                         }
                     }
-                    edges.Add(new Edge(entryNode, entry));
+                    bool hasParent = HasExternalTransitions(machine, hierarchy, indices, machineIndices);
+                    int parent = nodeCount;
+                    int count = nodeCount + (hasParent ? 1 : 0);
+                    if (count == 0) return;
+                    int exit = count, entryNode = count + 1, any = count + 2;
+                    int entry = machine.DefaultState != null ? indices[machine.DefaultState] : 0;
+                    outgoing = NewAdjacency(count);
+                    incoming = NewAdjacency(count);
+                    foreach (var current in hierarchy) {
+                        bool isRoot = current == machine;
+                        bool currentIsInside = isRoot || machineIndices.TryGetValue(current, out _);
+                        int source = isRoot ? entryNode :
+                            currentIsInside ? machineIndices[current] : parent;
+                        foreach (var state in current.States) {
+                            bool inside = indices.TryGetValue(state.State, out int stateSource);
+                            if (!inside && !hasParent) continue;
+                            foreach (var transition in state.State.Transitions)
+                                AddTransition(inside ? stateSource : parent, transition, inside && isRoot,
+                                    inside, hasParent, parent, indices, machineIndices,
+                                    edges, uniqueEdges, outgoing, incoming, exit);
+                        }
+                        if (!currentIsInside && !hasParent) continue;
+                        foreach (var transition in current.EntryTransitions)
+                            AddTransition(source, transition, false, currentIsInside, hasParent, parent, indices, machineIndices,
+                                edges, uniqueEdges, outgoing, incoming, exit);
+                        source = isRoot ? any : source;
+                        foreach (var transition in current.AnyStateTransitions)
+                            AddTransition(source, transition, false, currentIsInside, hasParent, parent, indices, machineIndices,
+                                edges, uniqueEdges, outgoing, incoming, exit);
+                        foreach (var child in current.StateMachines) {
+                            bool inside = machineIndices.TryGetValue(child.StateMachine, out int childSource);
+                            if (!inside && !hasParent) continue;
+                            if (current.StateMachineTransitions.TryGetValue(child.StateMachine, out var transitions))
+                                foreach (var transition in transitions)
+                                    AddTransition(inside ? childSource : parent, transition, inside && isRoot,
+                                        inside, hasParent, parent, indices,
+                                        machineIndices, edges, uniqueEdges, outgoing, incoming, exit);
+                        }
+                    }
+                    if (machine.DefaultState == null) {
+                        foreach (var edge in edges)
+                            if (edge.from == entryNode) {
+                                entry = edge.to;
+                                break;
+                            }
+                    } else if (uniqueEdges.Add((entryNode, entry)))
+                        edges.Add(new Edge(entryNode, entry));
 
                     var ranks = GetRanks(outgoing, incoming, entry);
                     groups = GetGroups(outgoing, incoming, entry);
@@ -63,15 +126,23 @@ namespace JLChnToZ.NDExtensions.Editors {
                     var chosen = Better(vertical, horizontal) ? vertical : horizontal;
 
                     var updated = states.ToBuilder();
-                    for (int i = 0; i < count; i++) {
+                    for (int i = 0; i < states.Count; i++) {
                         var child = updated[i];
                         child.Position = chosen.positions[i];
                         updated[i] = child;
                     }
                     machine.States = updated.ToImmutable();
+                    var updatedMachines = machines.ToBuilder();
+                    for (int i = 0; i < machines.Count; i++) {
+                        var child = updatedMachines[i];
+                        child.Position = chosen.positions[states.Count + i];
+                        updatedMachines[i] = child;
+                    }
+                    machine.StateMachines = updatedMachines.ToImmutable();
                     machine.ExitPosition = chosen.positions[exit];
                     machine.EntryPosition = chosen.positions[entryNode];
                     machine.AnyStatePosition = chosen.positions[any];
+                    if (hasParent) machine.ParentStateMachinePosition = chosen.positions[parent];
                 } finally {
                     ReleaseAdjacency(outgoing);
                     ReleaseAdjacency(incoming);
@@ -85,6 +156,67 @@ namespace JLChnToZ.NDExtensions.Editors {
                     }
                 }
             }
+        }
+
+        static bool HasExternalTransitions(
+            VirtualStateMachine machine, List<VirtualStateMachine> hierarchy,
+            Dictionary<VirtualState, int> indices, Dictionary<VirtualStateMachine, int> machineIndices
+        ) {
+            foreach (var current in hierarchy) {
+                foreach (var state in current.States)
+                    foreach (var transition in state.State.Transitions)
+                        if (CrossesBoundary(indices.ContainsKey(state.State), transition, indices, machineIndices))
+                            return true;
+                bool inside = current == machine || machineIndices.ContainsKey(current);
+                foreach (var transition in current.EntryTransitions)
+                    if (CrossesBoundary(inside, transition, indices, machineIndices)) return true;
+                foreach (var transition in current.AnyStateTransitions)
+                    if (CrossesBoundary(inside, transition, indices, machineIndices)) return true;
+                foreach (var child in current.StateMachines)
+                    if (current.StateMachineTransitions.TryGetValue(child.StateMachine, out var transitions))
+                        foreach (var transition in transitions)
+                            if (CrossesBoundary(machineIndices.ContainsKey(child.StateMachine), transition, indices, machineIndices))
+                                return true;
+            }
+            return false;
+        }
+
+        static bool CrossesBoundary(
+            bool sourceInside, VirtualTransitionBase transition,
+            Dictionary<VirtualState, int> indices, Dictionary<VirtualStateMachine, int> machineIndices
+        ) {
+            if (transition.IsExit) return false;
+            if (transition.DestinationState != null)
+                return sourceInside != indices.ContainsKey(transition.DestinationState);
+            if (transition.DestinationStateMachine != null)
+                return sourceInside != machineIndices.ContainsKey(transition.DestinationStateMachine);
+            return false;
+        }
+
+        static void AddTransition(
+            int source, VirtualTransitionBase transition, bool includeExit, bool sourceInside, bool hasParent, int parent,
+            Dictionary<VirtualState, int> indices, Dictionary<VirtualStateMachine, int> machineIndices,
+            List<Edge> edges, HashSet<(int, int)> uniqueEdges, List<int>[] outgoing, List<int>[] incoming, int exit
+        ) {
+            int target;
+            if (transition.IsExit) {
+                if (!includeExit) return;
+                target = exit;
+            } else if (transition.DestinationState != null && indices.TryGetValue(transition.DestinationState, out var stateIndex))
+                target = stateIndex;
+            else if (transition.DestinationStateMachine != null &&
+                machineIndices.TryGetValue(transition.DestinationStateMachine, out var machineIndex))
+                target = machineIndex;
+            else if (hasParent && sourceInside &&
+                (transition.DestinationState != null || transition.DestinationStateMachine != null))
+                target = parent;
+            else return;
+            if (!sourceInside && target == parent) return;
+            if (!uniqueEdges.Add((source, target))) return;
+            edges.Add(new Edge(source, target));
+            if (source >= exit || target == exit || target == source) return;
+            outgoing[source].Add(target);
+            incoming[target].Add(source);
         }
 
         static List<int>[] NewAdjacency(int count) {
